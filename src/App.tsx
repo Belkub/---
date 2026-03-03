@@ -1,0 +1,382 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useRef } from 'react';
+import { 
+  Search, 
+  Droplets, 
+  Camera, 
+  Upload, 
+  Info, 
+  Thermometer, 
+  Zap, 
+  FlaskConical, 
+  Beaker,
+  ChevronRight,
+  Loader2,
+  AlertCircle
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
+import { analyzeBentonite, getWaterTreatment, WaterParams } from './services/geminiService';
+
+type Tab = 'bentonite' | 'water';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('bentonite');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Bentonite Search State
+  const [brandName, setBrandName] = useState('');
+  const [crossingParams, setCrossingParams] = useState({
+    length: 100,
+    reamerDiameter: 300,
+    soilType: 'Песок'
+  });
+  const [customSoil, setCustomSoil] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Water Params State
+  const [waterParams, setWaterParams] = useState<WaterParams>({
+    temperature: 15,
+    conductivity: 400,
+    ph: 7.0,
+    hardness: 200
+  });
+
+  const soilTypes = [
+    'Песок', 'Глины', 'Суглинок', 'Супесь', 
+    'Плывуны', 'Мерзлые грунты', 'Глинистый песчаник', 'Свой тип...'
+  ];
+
+  const handleBentoniteSearch = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!brandName.trim()) return;
+    
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
+      const data = await analyzeBentonite(brandName, { ...crossingParams, soilType: finalSoilType });
+      setResult(data || "Информация не найдена.");
+    } catch (err) {
+      setError("Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
+        const data = await analyzeBentonite({
+          data: base64Data,
+          mimeType: file.type
+        }, { ...crossingParams, soilType: finalSoilType });
+        setResult(data || "Не удалось проанализировать изображение.");
+        setLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setError("Ошибка обработки изображения.");
+      setLoading(false);
+    }
+  };
+
+  const handleWaterTreatment = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const data = await getWaterTreatment(waterParams);
+      setResult(data || "No recommendations generated.");
+    } catch (err) {
+      setError("Failed to generate water treatment recipes.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#E4E3E0] text-[#141414] font-sans selection:bg-[#141414] selection:text-[#E4E3E0]">
+      {/* Header */}
+      <header className="border-b border-[#141414] p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-serif italic tracking-tight">ГНБ Бентонит-Советник</h1>
+          <p className="text-xs uppercase tracking-widest opacity-60 font-mono mt-1">Профессиональная система управления буровыми растворами</p>
+        </div>
+        <div className="flex bg-white border border-[#141414] rounded-none overflow-hidden">
+          <button 
+            onClick={() => { setActiveTab('bentonite'); setResult(null); setError(null); }}
+            className={`px-6 py-2 text-xs uppercase tracking-widest font-mono transition-colors ${activeTab === 'bentonite' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'}`}
+          >
+            Поиск бентонита
+          </button>
+          <button 
+            onClick={() => { setActiveTab('water'); setResult(null); setError(null); }}
+            className={`px-6 py-2 text-xs uppercase tracking-widest font-mono transition-colors ${activeTab === 'water' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-gray-100'}`}
+          >
+            Водоподготовка
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Input Section */}
+        <div className="lg:col-span-5 space-y-6">
+          <AnimatePresence mode="wait">
+            {activeTab === 'bentonite' ? (
+              <motion.div 
+                key="bentonite-tab"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="bg-white border border-[#141414] p-6 space-y-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]"
+              >
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Поиск по названию марки</label>
+                  <form onSubmit={handleBentoniteSearch} className="relative">
+                    <input 
+                      type="text" 
+                      value={brandName}
+                      onChange={(e) => setBrandName(e.target.value)}
+                      placeholder="Напр. Bentonite W, Baroid, ПБМА..."
+                      className="w-full bg-transparent border-b border-[#141414] py-2 pr-10 focus:outline-none placeholder:opacity-30"
+                    />
+                    <button type="submit" className="absolute right-0 top-1/2 -translate-y-1/2 hover:scale-110 transition-transform">
+                      <Search size={18} />
+                    </button>
+                  </form>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Длина перехода (м)</label>
+                    <input 
+                      type="number" 
+                      value={crossingParams.length}
+                      onChange={(e) => setCrossingParams({...crossingParams, length: Number(e.target.value)})}
+                      className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Ø расширителя (мм)</label>
+                    <input 
+                      type="number" 
+                      value={crossingParams.reamerDiameter}
+                      onChange={(e) => setCrossingParams({...crossingParams, reamerDiameter: Number(e.target.value)})}
+                      className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Тип грунта</label>
+                  <select 
+                    value={crossingParams.soilType}
+                    onChange={(e) => setCrossingParams({...crossingParams, soilType: e.target.value})}
+                    className="w-full bg-transparent border-b border-[#141414] py-2 focus:outline-none text-sm appearance-none cursor-pointer"
+                  >
+                    {soilTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                  {crossingParams.soilType === 'Свой тип...' && (
+                    <motion.input 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      type="text"
+                      value={customSoil}
+                      onChange={(e) => setCustomSoil(e.target.value)}
+                      placeholder="Введите тип грунта..."
+                      className="w-full bg-transparent border-b border-[#141414] py-2 focus:outline-none text-sm mt-2"
+                    />
+                  )}
+                </div>
+
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-[#141414] opacity-20"></span>
+                  </div>
+                  <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-mono bg-white px-2">
+                    ИЛИ
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Анализ фото этикетки</label>
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-[#141414] p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors group"
+                  >
+                    <div className="p-3 rounded-full border border-[#141414] group-hover:bg-[#141414] group-hover:text-white transition-colors">
+                      <Camera size={24} />
+                    </div>
+                    <p className="text-xs font-mono uppercase tracking-wider">Нажмите, чтобы загрузить фото</p>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                      accept="image/*" 
+                      className="hidden" 
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="water-tab"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="bg-white border border-[#141414] p-6 space-y-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]"
+              >
+                <h3 className="font-serif italic text-xl">Параметры воды</h3>
+                
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-mono opacity-50">
+                      <Thermometer size={12} /> Темп. (°C)
+                    </label>
+                    <input 
+                      type="number" 
+                      value={waterParams.temperature}
+                      onChange={(e) => setWaterParams({...waterParams, temperature: Number(e.target.value)})}
+                      className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-mono opacity-50">
+                      <Zap size={12} /> Пров. (мкСм/см)
+                    </label>
+                    <input 
+                      type="number" 
+                      value={waterParams.conductivity}
+                      onChange={(e) => setWaterParams({...waterParams, conductivity: Number(e.target.value)})}
+                      className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-mono opacity-50">
+                      <FlaskConical size={12} /> Уровень pH
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={waterParams.ph}
+                      onChange={(e) => setWaterParams({...waterParams, ph: Number(e.target.value)})}
+                      className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-mono opacity-50">
+                      <Beaker size={12} /> Жесткость (ppm)
+                    </label>
+                    <input 
+                      type="number" 
+                      value={waterParams.hardness}
+                      onChange={(e) => setWaterParams({...waterParams, hardness: Number(e.target.value)})}
+                      className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleWaterTreatment}
+                  disabled={loading}
+                  className="w-full bg-[#141414] text-[#E4E3E0] py-3 text-xs uppercase tracking-[0.2em] font-mono flex items-center justify-center gap-2 hover:bg-opacity-90 transition-all disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={16} /> : 'Сформировать рецепты'}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="bg-[#141414] text-[#E4E3E0] p-4 text-[10px] font-mono uppercase tracking-widest leading-relaxed opacity-90">
+            <div className="flex items-center gap-2 mb-2">
+              <Info size={14} />
+              <span>Статус системы</span>
+            </div>
+            <div className="flex justify-between border-t border-white/20 pt-2">
+              <span>Поиск в сети:</span>
+              <span className="text-emerald-400">Активен</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Движок:</span>
+              <span>Gemini 3 Flash</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Results Section */}
+        <div className="lg:col-span-7">
+          <div className="bg-white border border-[#141414] min-h-[500px] flex flex-col shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
+            <div className="border-b border-[#141414] p-4 flex justify-between items-center bg-gray-50">
+              <span className="text-[10px] uppercase tracking-widest font-mono opacity-50">Отчет об анализе</span>
+              <div className="flex gap-1">
+                <div className="w-2 h-2 rounded-full bg-[#141414]"></div>
+                <div className="w-2 h-2 rounded-full bg-[#141414] opacity-40"></div>
+                <div className="w-2 h-2 rounded-full bg-[#141414] opacity-20"></div>
+              </div>
+            </div>
+
+            <div className="flex-1 p-8 overflow-y-auto">
+              {loading ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40">
+                  <Loader2 className="animate-spin" size={48} />
+                  <p className="font-mono text-xs uppercase tracking-widest">Обработка данных...</p>
+                </div>
+              ) : error ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4 text-red-600">
+                  <AlertCircle size={48} />
+                  <p className="font-mono text-xs uppercase tracking-widest">{error}</p>
+                </div>
+              ) : result ? (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="prose prose-sm max-w-none prose-headings:font-serif prose-headings:italic prose-headings:border-b prose-headings:border-[#141414] prose-headings:pb-2 prose-p:font-sans prose-strong:font-mono prose-strong:uppercase prose-strong:text-[10px] prose-strong:tracking-widest"
+                >
+                  <div className="markdown-body overflow-x-auto">
+                    <Markdown>{result}</Markdown>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center gap-6 opacity-20 grayscale">
+                  <Droplets size={80} strokeWidth={1} />
+                  <div className="text-center space-y-2">
+                    <p className="font-serif italic text-2xl">Ожидание ввода</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em]">Выберите марку или введите параметры воды</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="mt-12 border-t border-[#141414] p-6 text-center">
+        <p className="text-[10px] uppercase tracking-[0.3em] font-mono opacity-40">
+          © 2026 ГНБ Тех Решения • Промышленный анализ буровых растворов
+        </p>
+      </footer>
+    </div>
+  );
+}

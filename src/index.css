@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Cormorant Garamond", serif;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+.markdown-body {
+  @apply space-y-4;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  @apply mt-8 mb-4;
+}
+
+.markdown-body ul {
+  @apply list-disc pl-5 space-y-1;
+}
+
+.markdown-body li {
+  @apply leading-relaxed;
+}
+
+.markdown-body strong {
+  @apply font-semibold;
+}
+
+.markdown-body table {
+  @apply w-full border-collapse border border-[#141414] my-4 text-xs;
+}
+
+.markdown-body th, .markdown-body td {
+  @apply border border-[#141414] p-2 text-left;
+}
+
+.markdown-body th {
+  @apply bg-gray-100 font-mono uppercase tracking-wider;
+}
+
+.markdown-body tr:nth-child(even) {
+  @apply bg-gray-50;
+}
+
+/* Responsive container for tables */
+.markdown-body .table-wrapper {
+  @apply overflow-x-auto -mx-4 px-4;
+}
