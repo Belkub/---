@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import { analyzeBentonite, getWaterTreatment, WaterParams } from './services/geminiService';
+import { analyzeBentonite, getWaterTreatment, WaterParams, getBentoniteComposition, getBentoniteAnalogs } from './services/geminiService';
 
 type Tab = 'bentonite' | 'water';
 
@@ -32,6 +32,7 @@ export default function App() {
 
   // Bentonite Search State
   const [brandName, setBrandName] = useState('');
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [crossingParams, setCrossingParams] = useState({
     length: 100,
     reamerDiameter: 300,
@@ -48,6 +49,8 @@ export default function App() {
     hardness: 200
   });
 
+  // Removed auto-update analysis effect as per user request
+
   const soilTypes = [
     'Песок', 'Глины', 'Суглинок', 'Супесь', 
     'Плывуны', 'Мерзлые грунты', 'Глинистый песчаник', 'Свой тип...'
@@ -55,17 +58,60 @@ export default function App() {
 
   const handleBentoniteSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!brandName.trim()) return;
+    if (!brandName.trim() || loading) return;
+    
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setUploadedImageUrl(null); // Clear image on new search
+    if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input value
+    try {
+      const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
+      const response = await analyzeBentonite(brandName, { ...crossingParams, soilType: finalSoilType });
+      setResult(response.text || "Информация не найдена.");
+      if (response.brand && response.brand !== brandName) setBrandName(response.brand);
+    } catch (err) {
+      setError("Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompositionSearch = async () => {
+    if (!brandName.trim()) {
+      setError("Сначала введите название марки бентонита.");
+      return;
+    }
     
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
-      const data = await analyzeBentonite(brandName, { ...crossingParams, soilType: finalSoilType });
-      setResult(data || "Информация не найдена.");
+      const data = await getBentoniteComposition(brandName);
+      setResult(data || "Информация о составе не найдена.");
     } catch (err) {
-      setError("Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
+      setError("Не удалось получить состав бентонита.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnalogsSearch = async () => {
+    if (!brandName.trim()) {
+      setError("Сначала введите название марки бентонита.");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const data = await getBentoniteAnalogs(brandName);
+      setResult(data || "Аналоги не найдены.");
+    } catch (err) {
+      setError("Не удалось получить список аналогов.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -82,14 +128,24 @@ export default function App() {
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
-        const data = await analyzeBentonite({
-          data: base64Data,
-          mimeType: file.type
-        }, { ...crossingParams, soilType: finalSoilType });
-        setResult(data || "Не удалось проанализировать изображение.");
-        setLoading(false);
+        try {
+          const imageUrl = reader.result as string;
+          setUploadedImageUrl(imageUrl);
+          const base64Data = imageUrl.split(',')[1];
+          const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
+          const response = await analyzeBentonite({
+            data: base64Data,
+            mimeType: file.type
+          }, { ...crossingParams, soilType: finalSoilType });
+          setResult(response.text || "Не удалось проанализировать изображение.");
+          if (response.brand) setBrandName(response.brand);
+        } catch (err) {
+          setError("Ошибка анализа изображения.");
+          console.error(err);
+        } finally {
+          setLoading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
       };
       reader.readAsDataURL(file);
     } catch (err) {
@@ -170,8 +226,10 @@ export default function App() {
                     <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Длина перехода (м)</label>
                     <input 
                       type="number" 
-                      value={crossingParams.length}
-                      onChange={(e) => setCrossingParams({...crossingParams, length: Number(e.target.value)})}
+                      value={crossingParams.length || ''}
+                      onChange={(e) => setCrossingParams({...crossingParams, length: e.target.value === '' ? 0 : Number(e.target.value)})}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0"
                       className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none text-sm"
                     />
                   </div>
@@ -179,8 +237,10 @@ export default function App() {
                     <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Ø расширителя (мм)</label>
                     <input 
                       type="number" 
-                      value={crossingParams.reamerDiameter}
-                      onChange={(e) => setCrossingParams({...crossingParams, reamerDiameter: Number(e.target.value)})}
+                      value={crossingParams.reamerDiameter || ''}
+                      onChange={(e) => setCrossingParams({...crossingParams, reamerDiameter: e.target.value === '' ? 0 : Number(e.target.value)})}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0"
                       className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none text-sm"
                     />
                   </div>
@@ -210,6 +270,24 @@ export default function App() {
                   )}
                 </div>
 
+                <button 
+                  onClick={() => handleBentoniteSearch()}
+                  disabled={loading || !brandName.trim()}
+                  className="w-full bg-[#141414] text-[#E4E3E0] py-3 text-xs uppercase tracking-widest font-mono hover:bg-opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Search size={14} />
+                    </motion.div>
+                  ) : (
+                    <Search size={14} />
+                  )}
+                  Запустить анализ
+                </button>
+
                 <div className="relative py-4">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t border-[#141414] opacity-20"></span>
@@ -221,22 +299,47 @@ export default function App() {
 
                 <div className="space-y-4">
                   <label className="text-[10px] uppercase tracking-widest font-mono opacity-50">Анализ фото этикетки</label>
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-[#141414] p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors group"
-                  >
-                    <div className="p-3 rounded-full border border-[#141414] group-hover:bg-[#141414] group-hover:text-white transition-colors">
-                      <Camera size={24} />
+                  {uploadedImageUrl ? (
+                    <div className="space-y-4">
+                      <div className="relative border border-[#141414] overflow-hidden group">
+                        <img 
+                          src={uploadedImageUrl} 
+                          alt="Uploaded label" 
+                          className="w-full h-48 object-cover grayscale hover:grayscale-0 transition-all duration-500"
+                          referrerPolicy="no-referrer"
+                        />
+                        <button 
+                          onClick={() => { setUploadedImageUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                          className="absolute top-2 right-2 bg-white border border-[#141414] p-1 hover:bg-[#141414] hover:text-white transition-colors"
+                        >
+                          <AlertCircle size={14} className="rotate-45" />
+                        </button>
+                      </div>
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full border border-[#141414] py-2 text-[10px] uppercase tracking-widest font-mono hover:bg-gray-50 transition-colors"
+                      >
+                        Загрузить другое фото
+                      </button>
                     </div>
-                    <p className="text-xs font-mono uppercase tracking-wider">Нажмите, чтобы загрузить фото</p>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={handleFileUpload} 
-                      accept="image/*" 
-                      className="hidden" 
-                    />
-                  </div>
+                  ) : (
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-[#141414] p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className="p-3 rounded-full border border-[#141414] group-hover:bg-[#141414] group-hover:text-white transition-colors">
+                        <Camera size={24} />
+                      </div>
+                      <p className="text-xs font-mono uppercase tracking-wider">Нажмите, чтобы загрузить фото</p>
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileUpload} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
                 </div>
               </motion.div>
             ) : (
@@ -328,7 +431,27 @@ export default function App() {
         <div className="lg:col-span-7">
           <div className="bg-white border border-[#141414] min-h-[500px] flex flex-col shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
             <div className="border-b border-[#141414] p-4 flex justify-between items-center bg-gray-50">
-              <span className="text-[10px] uppercase tracking-widest font-mono opacity-50">Отчет об анализе</span>
+              <div className="flex items-center gap-4">
+                <span className="text-[10px] uppercase tracking-widest font-mono opacity-50">Отчет об анализе</span>
+                {activeTab === 'bentonite' && (brandName || uploadedImageUrl) && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleCompositionSearch}
+                      disabled={loading}
+                      className="text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] hover:bg-[#141414] hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      Состав бентопорошка
+                    </button>
+                    <button 
+                      onClick={handleAnalogsSearch}
+                      disabled={loading}
+                      className="text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] hover:bg-[#141414] hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      Аналоги
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="flex gap-1">
                 <div className="w-2 h-2 rounded-full bg-[#141414]"></div>
                 <div className="w-2 h-2 rounded-full bg-[#141414] opacity-40"></div>
