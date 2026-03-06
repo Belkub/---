@@ -359,8 +359,9 @@ export default function App() {
                     </label>
                     <input 
                       type="number" 
-                      value={waterParams.temperature}
-                      onChange={(e) => setWaterParams({...waterParams, temperature: Number(e.target.value)})}
+                      value={waterParams.temperature || ''}
+                      onChange={(e) => setWaterParams({...waterParams, temperature: e.target.value === '' ? 0 : Number(e.target.value)})}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
                     />
                   </div>
@@ -370,8 +371,9 @@ export default function App() {
                     </label>
                     <input 
                       type="number" 
-                      value={waterParams.conductivity}
-                      onChange={(e) => setWaterParams({...waterParams, conductivity: Number(e.target.value)})}
+                      value={waterParams.conductivity || ''}
+                      onChange={(e) => setWaterParams({...waterParams, conductivity: e.target.value === '' ? 0 : Number(e.target.value)})}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
                     />
                   </div>
@@ -382,8 +384,9 @@ export default function App() {
                     <input 
                       type="number" 
                       step="0.1"
-                      value={waterParams.ph}
-                      onChange={(e) => setWaterParams({...waterParams, ph: Number(e.target.value)})}
+                      value={waterParams.ph || ''}
+                      onChange={(e) => setWaterParams({...waterParams, ph: e.target.value === '' ? 0 : Number(e.target.value)})}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
                     />
                   </div>
@@ -393,8 +396,9 @@ export default function App() {
                     </label>
                     <input 
                       type="number" 
-                      value={waterParams.hardness}
-                      onChange={(e) => setWaterParams({...waterParams, hardness: Number(e.target.value)})}
+                      value={waterParams.hardness || ''}
+                      onChange={(e) => setWaterParams({...waterParams, hardness: e.target.value === '' ? 0 : Number(e.target.value)})}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-transparent border-b border-[#141414] py-1 focus:outline-none"
                     />
                   </div>
