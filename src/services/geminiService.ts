@@ -35,6 +35,50 @@ export interface CrossingParams {
   soilType: string;
 }
 
+const callGemini = async (model: string, contents: any, config: any, retries = 5) => {
+  let retryCount = 0;
+  while (retryCount <= retries) {
+    try {
+      const response = await ai.models.generateContent({ model, contents, config });
+      return response;
+    } catch (error: any) {
+      // Robust error detection for 429/Quota issues
+      const errorMessage = error.message || "";
+      const errorStatus = error.status || "";
+      const errorDetails = JSON.stringify(error);
+      
+      const isQuotaError = 
+        errorMessage.includes("429") || 
+        errorMessage.includes("RESOURCE_EXHAUSTED") ||
+        errorStatus === "RESOURCE_EXHAUSTED" ||
+        errorDetails.includes("429") ||
+        errorDetails.includes("RESOURCE_EXHAUSTED") ||
+        (error.response && error.response.status === 429);
+      
+      if (isQuotaError && retryCount < retries) {
+        retryCount++;
+        // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.warn(`Quota exceeded (429). Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      if (isQuotaError) {
+        throw new Error("Превышен лимит запросов (Quota Exceeded). На бесплатном тарифе Gemini действуют ограничения на количество запросов в минуту. Пожалуйста, подождите 1-2 минуты и попробуйте снова. Для бесперебойной работы рекомендуется использовать платный тариф (Pay-as-you-go) в Google AI Studio.");
+      }
+      
+      // Handle other common errors
+      if (errorMessage.includes("API key not valid")) {
+        throw new Error("Неверный API ключ. Пожалуйста, проверьте настройки GEMINI_API_KEY.");
+      }
+
+      throw error;
+    }
+  }
+  throw new Error("Не удалось получить ответ от нейросети после нескольких попыток из-за ограничений частоты запросов.");
+};
+
 export const analyzeBentonite = async (
   input: string | { data: string; mimeType: string },
   crossing?: CrossingParams
@@ -73,23 +117,19 @@ export const analyzeBentonite = async (
         ]
       };
 
-  let response;
   try {
-    response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            brand: { type: Type.STRING, description: "Identified brand name" },
-            analysis: { type: Type.STRING, description: "Full technical analysis in Russian" }
-          },
-          required: ["brand", "analysis"]
+    const response = await callGemini(model, contents, {
+      tools: [{ googleSearch: {} }],
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          brand: { type: Type.STRING, description: "Identified brand name" },
+          analysis: { type: Type.STRING, description: "Full technical analysis in Russian" }
         },
-        systemInstruction: `Вы эксперт в области ГНБ, микротоннелирования и буровых растворов. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
+        required: ["brand", "analysis"]
+      },
+      systemInstruction: `Вы эксперт в области ГНБ, микротоннелирования и буровых растворов. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
 
 КРИТИЧЕСКИЕ ПРАВИЛА (НАРУШЕНИЕ ЗАПРЕЩЕНО):
 1. ПРОВЕРКА ССЫЛОК: Каждая ссылка (URL), которую вы приводите, должна быть ПРЯМОЙ ссылкой на страницу продукта, TDS или официальный сайт производителя. 
@@ -106,31 +146,15 @@ export const analyzeBentonite = async (
 5. СТРУКТУРА: Отчет должен быть СТРОГО структурирован с пустыми строками между разделами.
 6. ПРЕДУПРЕЖДЕНИЕ: Любая выдуманная цифра, ссылка или адрес делает ваш ответ бесполезным и опасным. Лучше выдать "Данные не найдены", чем ложную информацию.
 Ответ должен быть на русском языке.`
-      }
     });
-  } catch (error: any) {
-    console.error("Gemini API call failed:", error);
-    return {
-      text: `Ошибка при обращении к нейросети: ${error.message || "Неизвестная ошибка"}. Проверьте соединение с интернетом и настройки API ключа.`,
-      brand: typeof input === 'string' ? input : ""
-    };
-  }
 
-  console.log("Gemini API response received");
+    console.log("Gemini API response received");
 
-  try {
-    let textResponse = "";
-    try {
-      textResponse = response.text || "";
-    } catch (e) {
-      console.error("Error accessing response.text:", e);
-    }
-
+    let textResponse = response.text || "";
     if (!textResponse) {
       return { text: "Информация не найдена или заблокирована фильтрами безопасности.", brand: typeof input === 'string' ? input : "" };
     }
 
-    // Try to extract JSON if the model included extra text
     const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
     const result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(textResponse);
 
@@ -138,10 +162,10 @@ export const analyzeBentonite = async (
       text: result.analysis || "Информация не найдена.",
       brand: result.brand || (typeof input === 'string' ? input : "")
     };
-  } catch (e) {
-    console.error("Parsing error in analyzeBentonite:", e);
+  } catch (error: any) {
+    console.error("analyzeBentonite failed:", error);
     return {
-      text: "Произошла ошибка при обработке данных. Пожалуйста, попробуйте уточнить запрос.",
+      text: `Ошибка: ${error.message || "Неизвестная ошибка"}`,
       brand: typeof input === 'string' ? input : ""
     };
   }
@@ -158,21 +182,17 @@ export const getBentoniteComposition = async (brand: string) => {
   Ответ должен быть на русском языке, без LaTeX-символов. Используйте четкую структуру.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: `Вы эксперт в области химии буровых растворов и минералогии. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
+    const response = await callGemini(model, prompt, {
+      tools: [{ googleSearch: {} }],
+      systemInstruction: `Вы эксперт в области химии буровых растворов и минералогии. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
 ...
 6. ПРЕДУПРЕЖДЕНИЕ: Достоверность — единственный приоритет. Ответ на русском языке.`
-      }
     });
 
     return response.text;
   } catch (error: any) {
     console.error("getBentoniteComposition failed:", error);
-    return `Ошибка при получении состава: ${error.message || "Неизвестная ошибка"}`;
+    return `Ошибка: ${error.message || "Неизвестная ошибка"}`;
   }
 };
 
@@ -187,21 +207,17 @@ export const getBentoniteAnalogs = async (brand: string) => {
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО указывать названия производителей, их телефоны или сайты (кроме ссылки на страницу продукта). Ответ должен быть на русском языке, структурирован как список. Не используйте LaTeX.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: `Вы эксперт-технолог по буровым растворам ГНБ. Ваша задача — подобрать аналоги бентонита.
+    const response = await callGemini(model, prompt, {
+      tools: [{ googleSearch: {} }],
+      systemInstruction: `Вы эксперт-технолог по буровым растворам ГНБ. Ваша задача — подобрать аналоги бентонита.
 ...
 6. ПРЕДУПРЕЖДЕНИЕ: Достоверность — единственный приоритет. Ответ на русском языке.`
-      }
     });
 
     return response.text;
   } catch (error: any) {
     console.error("getBentoniteAnalogs failed:", error);
-    return `Ошибка при поиске аналогов: ${error.message || "Неизвестная ошибка"}`;
+    return `Ошибка: ${error.message || "Неизвестная ошибка"}`;
   }
 };
 
@@ -216,17 +232,13 @@ export const getWaterTreatment = async (params: WaterParams) => {
   For each level, list reagents (like Soda Ash, Citric Acid, Sodium Percarbonate, Caustic Soda, TPP, HMP), their concentrations, and the logic behind the choice. Respond in Russian.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        systemInstruction: "Вы профессиональный инженер по буровым растворам ГНБ. Ваша цель — предоставить точные рецепты химической обработки для оптимизации воды. ВАЖНО: Не используйте LaTeX-символы или сложные математические обозначения. Пишите названия параметров словами, используйте только стандартные системные единицы (м3, м, мм, кг, г, л). Ответ должен быть на русском языке."
-      }
+    const response = await callGemini(model, prompt, {
+      systemInstruction: "Вы профессиональный инженер по буровым растворам ГНБ. Ваша цель — предоставить точные рецепты химической обработки для оптимизации воды. ВАЖНО: Не используйте LaTeX-символы или сложные математические обозначения. Пишите названия параметров словами, используйте только стандартные системные единицы (м3, м, мм, кг, г, л). Ответ должен быть на русском языке."
     });
 
     return response.text;
   } catch (error: any) {
     console.error("getWaterTreatment failed:", error);
-    return `Ошибка при расчете водоподготовки: ${error.message || "Неизвестная ошибка"}`;
+    return `Ошибка: ${error.message || "Неизвестная ошибка"}`;
   }
 };
