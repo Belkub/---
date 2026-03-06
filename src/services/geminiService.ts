@@ -35,14 +35,20 @@ export interface CrossingParams {
   soilType: string;
 }
 
-const callGemini = async (model: string, contents: any, config: any, retries = 5) => {
+const callGemini = async (model: string, contents: any, config: any, retries = 3) => {
   let retryCount = 0;
   while (retryCount <= retries) {
     try {
-      const response = await ai.models.generateContent({ model, contents, config });
+      // If we are on a retry, maybe try without tools if they might be causing quota issues
+      const currentConfig = { ...config };
+      if (retryCount > 0 && currentConfig.tools) {
+        console.warn("Retry attempt: removing tools to see if it bypasses quota limits.");
+        delete currentConfig.tools;
+      }
+
+      const response = await ai.models.generateContent({ model, contents, config: currentConfig });
       return response;
     } catch (error: any) {
-      // Robust error detection for 429/Quota issues
       const errorMessage = error.message || "";
       const errorStatus = error.status || "";
       const errorDetails = JSON.stringify(error);
@@ -57,7 +63,6 @@ const callGemini = async (model: string, contents: any, config: any, retries = 5
       
       if (isQuotaError && retryCount < retries) {
         retryCount++;
-        // Exponential backoff: 2s, 4s, 8s, 16s, 32s
         const delay = Math.pow(2, retryCount) * 1000;
         console.warn(`Quota exceeded (429). Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -65,18 +70,17 @@ const callGemini = async (model: string, contents: any, config: any, retries = 5
       }
 
       if (isQuotaError) {
-        throw new Error("Превышен лимит запросов (Quota Exceeded). На бесплатном тарифе Gemini действуют ограничения на количество запросов в минуту. Пожалуйста, подождите 1-2 минуты и попробуйте снова. Для бесперебойной работы рекомендуется использовать платный тариф (Pay-as-you-go) в Google AI Studio.");
+        throw new Error("Лимит запросов исчерпан. Пожалуйста, подождите 1-2 минуты. Если ошибка повторяется на первом же запросе, возможно, ваш API ключ имеет ограничения на использование инструментов поиска или выбранной модели.");
       }
       
-      // Handle other common errors
       if (errorMessage.includes("API key not valid")) {
-        throw new Error("Неверный API ключ. Пожалуйста, проверьте настройки GEMINI_API_KEY.");
+        throw new Error("Неверный API ключ. Проверьте настройки GEMINI_API_KEY в панели управления Vercel.");
       }
 
       throw error;
     }
   }
-  throw new Error("Не удалось получить ответ от нейросети после нескольких попыток из-за ограничений частоты запросов.");
+  throw new Error("Не удалось получить ответ от нейросети.");
 };
 
 export const analyzeBentonite = async (

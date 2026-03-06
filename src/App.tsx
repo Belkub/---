@@ -63,15 +63,20 @@ export default function App() {
     setLoading(true);
     setError(null);
     setResult(null);
-    setUploadedImageUrl(null); // Clear image on new search
-    if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input value
+    setUploadedImageUrl(null);
+    
     try {
       const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
       const response = await analyzeBentonite(brandName, { ...crossingParams, soilType: finalSoilType });
-      setResult(response.text || "Информация не найдена.");
-      if (response.brand && response.brand !== brandName) setBrandName(response.brand);
-    } catch (err) {
-      setError("Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
+      
+      if (response.text.startsWith("Ошибка:")) {
+        setError(response.text);
+      } else {
+        setResult(response.text || "Информация не найдена.");
+        if (response.brand && response.brand !== brandName) setBrandName(response.brand);
+      }
+    } catch (err: any) {
+      setError(err.message || "Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -89,9 +94,13 @@ export default function App() {
     setResult(null);
     try {
       const data = await getBentoniteComposition(brandName);
-      setResult(data || "Информация о составе не найдена.");
-    } catch (err) {
-      setError("Не удалось получить состав бентонита.");
+      if (data.startsWith("Ошибка:")) {
+        setError(data);
+      } else {
+        setResult(data || "Информация о составе не найдена.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Не удалось получить состав бентонита.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -109,9 +118,13 @@ export default function App() {
     setResult(null);
     try {
       const data = await getBentoniteAnalogs(brandName);
-      setResult(data || "Аналоги не найдены.");
-    } catch (err) {
-      setError("Не удалось получить список аналогов.");
+      if (data.startsWith("Ошибка:")) {
+        setError(data);
+      } else {
+        setResult(data || "Аналоги не найдены.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Не удалось получить список аналогов.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -137,10 +150,15 @@ export default function App() {
             data: base64Data,
             mimeType: file.type
           }, { ...crossingParams, soilType: finalSoilType });
-          setResult(response.text || "Не удалось проанализировать изображение.");
-          if (response.brand) setBrandName(response.brand);
-        } catch (err) {
-          setError("Ошибка анализа изображения.");
+          
+          if (response.text.startsWith("Ошибка:")) {
+            setError(response.text);
+          } else {
+            setResult(response.text || "Не удалось проанализировать изображение.");
+            if (response.brand) setBrandName(response.brand);
+          }
+        } catch (err: any) {
+          setError(err.message || "Ошибка анализа изображения.");
           console.error(err);
         } finally {
           setLoading(false);
@@ -160,9 +178,13 @@ export default function App() {
     setResult(null);
     try {
       const data = await getWaterTreatment(waterParams);
-      setResult(data || "No recommendations generated.");
-    } catch (err) {
-      setError("Failed to generate water treatment recipes.");
+      if (data.startsWith("Ошибка:")) {
+        setError(data);
+      } else {
+        setResult(data || "Рекомендации не сформированы.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Не удалось сформировать рецепты водоподготовки.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -470,9 +492,18 @@ export default function App() {
                   <p className="font-mono text-xs uppercase tracking-widest">Обработка данных...</p>
                 </div>
               ) : error ? (
-                <div className="h-full flex flex-col items-center justify-center gap-4 text-red-600">
-                  <AlertCircle size={48} />
-                  <p className="font-mono text-xs uppercase tracking-widest">{error}</p>
+                <div className="h-full flex flex-col items-center justify-center gap-6 text-center">
+                  <AlertCircle size={48} className="text-red-500" />
+                  <div className="space-y-2">
+                    <p className="font-mono text-xs uppercase tracking-widest text-red-600 font-bold">Произошла ошибка</p>
+                    <p className="text-sm text-gray-600 max-w-md">{error}</p>
+                  </div>
+                  <button 
+                    onClick={() => { setError(null); setResult(null); }}
+                    className="px-6 py-2 border border-[#141414] text-[10px] uppercase tracking-widest font-mono hover:bg-[#141414] hover:text-white transition-colors"
+                  >
+                    Попробовать снова
+                  </button>
                 </div>
               ) : result ? (
                 <motion.div 
