@@ -39,7 +39,14 @@ export const analyzeBentonite = async (
   input: string | { data: string; mimeType: string },
   crossing?: CrossingParams
 ) => {
-  const model = "gemini-3.1-pro-preview";
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY is missing!");
+    return { text: "Ошибка: API ключ не настроен. Пожалуйста, проверьте переменные окружения.", brand: "" };
+  }
+
+  const model = "gemini-3-flash-preview";
+  console.log("Analyzing bentonite with model:", model);
   
   let crossingInfo = "";
   if (crossing) {
@@ -66,21 +73,23 @@ export const analyzeBentonite = async (
         ]
       };
 
-  const response = await ai.models.generateContent({
-    model,
-    contents,
-    config: {
-      tools: [{ googleSearch: {} }],
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          brand: { type: Type.STRING, description: "Identified brand name" },
-          analysis: { type: Type.STRING, description: "Full technical analysis in Russian" }
+  let response;
+  try {
+    response = await ai.models.generateContent({
+      model,
+      contents,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            brand: { type: Type.STRING, description: "Identified brand name" },
+            analysis: { type: Type.STRING, description: "Full technical analysis in Russian" }
+          },
+          required: ["brand", "analysis"]
         },
-        required: ["brand", "analysis"]
-      },
-      systemInstruction: `Вы эксперт в области ГНБ, микротоннелирования и буровых растворов. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
+        systemInstruction: `Вы эксперт в области ГНБ, микротоннелирования и буровых растворов. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
 
 КРИТИЧЕСКИЕ ПРАВИЛА (НАРУШЕНИЕ ЗАПРЕЩЕНО):
 1. ПРОВЕРКА ССЫЛОК: Каждая ссылка (URL), которую вы приводите, должна быть ПРЯМОЙ ссылкой на страницу продукта, TDS или официальный сайт производителя. 
@@ -97,8 +106,17 @@ export const analyzeBentonite = async (
 5. СТРУКТУРА: Отчет должен быть СТРОГО структурирован с пустыми строками между разделами.
 6. ПРЕДУПРЕЖДЕНИЕ: Любая выдуманная цифра, ссылка или адрес делает ваш ответ бесполезным и опасным. Лучше выдать "Данные не найдены", чем ложную информацию.
 Ответ должен быть на русском языке.`
-    }
-  });
+      }
+    });
+  } catch (error: any) {
+    console.error("Gemini API call failed:", error);
+    return {
+      text: `Ошибка при обращении к нейросети: ${error.message || "Неизвестная ошибка"}. Проверьте соединение с интернетом и настройки API ключа.`,
+      brand: typeof input === 'string' ? input : ""
+    };
+  }
+
+  console.log("Gemini API response received");
 
   try {
     let textResponse = "";
@@ -130,110 +148,85 @@ export const analyzeBentonite = async (
 };
 
 export const getBentoniteComposition = async (brand: string) => {
-  const model = "gemini-3.1-pro-preview";
+  const apiKey = getApiKey();
+  if (!apiKey) return "Ошибка: API ключ не настроен.";
+
+  const model = "gemini-3-flash-preview";
   
   const prompt = `Предоставьте подробный предполагаемый состав бентопорошка марки: ${brand}.
-  
-  Включите следующие разделы:
-  1. Тип и природа бентонита (например, натриевый, кальциевый, активированный, месторождение).
-  2. Тип и природа присадок:
-     - Полимерные добавки (тип полимера, назначение).
-     - Неорганические присадки (сода, соли и др.).
-     - Другие функциональные компоненты.
-  
+...
   Ответ должен быть на русском языке, без LaTeX-символов. Используйте четкую структуру.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      tools: [{ googleSearch: {} }],
-      systemInstruction: `Вы эксперт в области химии буровых растворов и минералогии. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
-
-КРИТИЧЕСКИЕ ПРАВИЛА:
-1. ИНФОРМАЦИЯ О ПРОИЗВОДИТЕЛЕ: Указывайте только реально существующие адреса и контакты. Обязательно в скобках указывайте источник: (источник: [URL]).
-2. ПРОВЕРКА ССЫЛОК: Каждая ссылка должна быть ПРЯМОЙ ссылкой на официальный сайт. ЗАПРЕЩЕНО давать ссылки на результаты поиска.
-3. ПРОВЕРКА ДАННЫХ: Если данных нет на официальных сайтах — НЕ ВЫДУМЫВАЙТЕ ИХ. Пишите "Данные не найдены".
-4. АББРЕВИАТУРЫ: ЗАПРЕЩЕНО придумывать расшифровки.
-5. СТРУКТУРА: Отчет должен быть СТРОГО структурирован с пустыми строками между разделами.
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        systemInstruction: `Вы эксперт в области химии буровых растворов и минералогии. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
+...
 6. ПРЕДУПРЕЖДЕНИЕ: Достоверность — единственный приоритет. Ответ на русском языке.`
-    }
-  });
+      }
+    });
 
-  return response.text;
+    return response.text;
+  } catch (error: any) {
+    console.error("getBentoniteComposition failed:", error);
+    return `Ошибка при получении состава: ${error.message || "Неизвестная ошибка"}`;
+  }
 };
 
 export const getBentoniteAnalogs = async (brand: string) => {
-  const model = "gemini-3.1-pro-preview";
+  const apiKey = getApiKey();
+  if (!apiKey) return "Ошибка: API ключ не настроен.";
+
+  const model = "gemini-3-flash-preview";
   
   const prompt = `Найдите список всех известных марок/брендов бентопорошков (как российского, так и зарубежного производства), которые являются прямыми технологическими аналогами марки: ${brand}.
-  
-  Критерии подбора аналогов:
-  - Близкие показатели вязкости (марша, эффективной).
-  - Схожая реология (предел текучести, СНС).
-  - Аналогичная водоотдача и толщина корки.
-  - Схожее назначение (для каких типов грунтов и условий переходов).
-  
-  ПРАВИЛА ПРОВЕРКИ И ВЫВОДА (КРИТИЧЕСКИ ВАЖНО):
-  1. В аналогах должны быть только марки бентопорошков, позиционируемых именно для ГНБ (HDD).
-  2. ПЕРЕД ТЕМ КАК ДОБАВИТЬ МАРКУ В СПИСОК, ОБЯЗАТЕЛЬНО ПРОВЕРЬТЕ ЕЁ СУЩЕСТВОВАНИЕ И ХАРАКТЕРИСТИКИ ЧЕРЕЗ ПОИСК.
-  3. ДЛЯ КАЖДОГО АНАЛОГА ОБЯЗАТЕЛЬНО В СКОБКАХ УКАЗЫВАЙТЕ ПРЯМУЮ ССЫЛКУ НА СТРАНИЦУ ПРОДУКТА ИЛИ ТЕХНИЧЕСКОЕ ОПИСАНИЕ (TDS) НА ОФИЦИАЛЬНОМ САЙТЕ (например: (источник: https://...)).
-  4. ЕСЛИ ВЫ НЕ НАШЛИ ПОДТВЕРЖДЕНИЯ СУЩЕСТВОВАНИЯ МАРКИ ИЛИ АКТИВНУЮ ССЫЛКУ НА ОФИЦИАЛЬНОМ САЙТЕ — НЕ ВКЛЮЧАЙТЕ ЕЁ.
-  5. ЗАПРЕЩЕНО ВЫДУМЫВАТЬ НАЗВАНИЯ МАРОК, ИХ ХАРАКТЕРИСТИКИ ИЛИ ССЫЛКИ.
-  6. ЛУЧШЕ ВЫДАТЬ 2-3 РЕАЛЬНЫХ АНАЛОГА С РАБОЧИМИ ССЫЛКАМИ, ЧЕМ 10 ВЫМЫШЛЕННЫХ.
-  
-  Для каждой аналогичной марки предоставьте:
-  1. Название марки.
-  2. Краткое сравнение ключевых свойств с оригиналом (вязкость, реология).
-  3. Ссылку на источник в скобках.
-  
-  КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО указывать названия производителей, их телефоны или сайты (кроме ссылки на страницу продукта). Ответ должен быть на русском языке, структурирован как список. Не используйте LaTeX.`;
+...
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО указывать названия производителей, их телефоны или сайты (кроме ссылки на страницу продукта). Ответ должен быть на русском языке, структурирован как список. Не используйте LaTeX.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      tools: [{ googleSearch: {} }],
-      systemInstruction: `Вы эксперт-технолог по буровым растворам ГНБ. Ваша задача — подобрать аналоги бентонита.
-
-КРИТИЧЕСКИЕ ПРАВИЛА:
-1. ТОЛЬКО ГНБ: В аналогах должны быть только марки бентопорошков, позиционируемых именно для ГНБ (HDD).
-2. ПРОВЕРКА ССЫЛОК: Для каждого аналога ОБЯЗАТЕЛЬНА прямая ссылка на страницу продукта или TDS на официальном сайте. 
-   - ЗАПРЕЩЕНО выдумывать ссылки. Ссылки должны быть активными и вести на реально существующие сайты.
-   - ЗАПРЕЩЕНО давать ссылки на результаты поиска.
-3. ПРОВЕРКА ДАННЫХ: Если информация не найдена на официальных ресурсах — не выводите её.
-4. СТРУКТУРА: Отчет должен быть СТРОГО структурирован с пустыми строками между разделами.
-5. АББРЕВИАТУРЫ: ЗАПРЕЩЕНО придумывать расшифровки.
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        systemInstruction: `Вы эксперт-технолог по буровым растворам ГНБ. Ваша задача — подобрать аналоги бентонита.
+...
 6. ПРЕДУПРЕЖДЕНИЕ: Достоверность — единственный приоритет. Ответ на русском языке.`
-    }
-  });
+      }
+    });
 
-  return response.text;
+    return response.text;
+  } catch (error: any) {
+    console.error("getBentoniteAnalogs failed:", error);
+    return `Ошибка при поиске аналогов: ${error.message || "Неизвестная ошибка"}`;
+  }
 };
 
 export const getWaterTreatment = async (params: WaterParams) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return "Ошибка: API ключ не настроен.";
+
   const model = "gemini-3-flash-preview";
   
   const prompt = `Based on these water parameters for HDD drilling fluid preparation:
-  - Temperature: ${params.temperature}°C
-  - Conductivity: ${params.conductivity} µS/cm
-  - pH: ${params.ph}
-  - Total Hardness: ${params.hardness} ppm (mg/l)
-  
-  Provide 3 levels of water treatment recipes:
-  1. Economy (Cheapest, technologically acceptable)
-  2. Standard (Balanced)
-  3. Premium (Solves all problems, optimal quality)
-  
+...
   For each level, list reagents (like Soda Ash, Citric Acid, Sodium Percarbonate, Caustic Soda, TPP, HMP), their concentrations, and the logic behind the choice. Respond in Russian.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      systemInstruction: "Вы профессиональный инженер по буровым растворам ГНБ. Ваша цель — предоставить точные рецепты химической обработки для оптимизации воды. ВАЖНО: Не используйте LaTeX-символы или сложные математические обозначения. Пишите названия параметров словами, используйте только стандартные системные единицы (м3, м, мм, кг, г, л). Ответ должен быть на русском языке."
-    }
-  });
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        systemInstruction: "Вы профессиональный инженер по буровым растворам ГНБ. Ваша цель — предоставить точные рецепты химической обработки для оптимизации воды. ВАЖНО: Не используйте LaTeX-символы или сложные математические обозначения. Пишите названия параметров словами, используйте только стандартные системные единицы (м3, м, мм, кг, г, л). Ответ должен быть на русском языке."
+      }
+    });
 
-  return response.text;
+    return response.text;
+  } catch (error: any) {
+    console.error("getWaterTreatment failed:", error);
+    return `Ошибка при расчете водоподготовки: ${error.message || "Неизвестная ошибка"}`;
+  }
 };
