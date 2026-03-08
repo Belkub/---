@@ -69,7 +69,7 @@ const isRetryableError = (error: any): { retryable: boolean; type: 'quota' | 'hi
   return { retryable: false, type: 'other' };
 };
 
-const callGemini = async (model: string, contents: any, config: any, signal?: AbortSignal, retries = 4) => {
+const callGemini = async (model: string, contents: any, config: any, signal?: AbortSignal, retries = 6) => {
   const TIMEOUT = 60000;
   let retryCount = 0;
   
@@ -87,7 +87,6 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
       const currentConfig = { 
         temperature: 0,
         seed: 42,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         ...config 
       };
       
@@ -121,8 +120,8 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
       const errorInfo = isRetryableError(error);
       if (errorInfo.retryable && retryCount < retries) {
         retryCount++;
-        const baseDelay = errorInfo.type === 'high_demand' ? 3000 : 2000;
-        const delay = Math.pow(2, retryCount) * baseDelay + Math.random() * 1000;
+        const baseDelay = errorInfo.type === 'quota' ? 15000 : (errorInfo.type === 'high_demand' ? 5000 : 2000);
+        const delay = Math.pow(2, retryCount) * baseDelay + Math.random() * 3000;
         
         console.warn(`Retryable error (${errorInfo.type}). Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -192,12 +191,12 @@ export const analyzeBentoniteStream = async (
   crossing: CrossingParams | undefined,
   onChunk: (chunk: string) => void,
   signal?: AbortSignal,
-  retries = 4
+  retries = 6
 ) => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("API ключ не настроен.");
 
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   let crossingInfo = "";
   if (crossing) {
@@ -231,7 +230,6 @@ export const analyzeBentoniteStream = async (
       const currentConfig: any = {
         temperature: 0,
         seed: 42,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         tools: retryCount === 0 ? [{ googleSearch: {} }] : [],
         systemInstruction: typeof input === 'string' ? SYSTEM_INSTRUCTION_TEXT : SYSTEM_INSTRUCTION_IMAGE
       };
@@ -287,8 +285,8 @@ export const analyzeBentoniteStream = async (
       const errorInfo = isRetryableError(error);
       if (errorInfo.retryable && retryCount < retries) {
         retryCount++;
-        const baseDelay = errorInfo.type === 'high_demand' ? 3000 : 2000;
-        const delay = Math.pow(2, retryCount) * baseDelay + Math.random() * 1000;
+        const baseDelay = errorInfo.type === 'quota' ? 15000 : (errorInfo.type === 'high_demand' ? 5000 : 2000);
+        const delay = Math.pow(2, retryCount) * baseDelay + Math.random() * 3000;
         
         console.warn(`Retryable error in stream (${errorInfo.type}). Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -318,7 +316,7 @@ export const analyzeBentonite = async (
     return { text: "Ошибка: API ключ не настроен.", brand: "" };
   }
 
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   let crossingInfo = "";
   if (crossing) {
@@ -347,10 +345,9 @@ export const analyzeBentonite = async (
       };
 
   try {
-    const response = await callGemini(model, contents, {
+      const response = await callGemini(model, contents, {
       tools: [{ googleSearch: {} }],
       seed: 42,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -407,7 +404,7 @@ export const getBentoniteComposition = async (brand: string, signal?: AbortSigna
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   const prompt = `Предоставьте подробный технический состав и химико-физические показатели бентопорошка марки: ${brand}.
   
@@ -426,7 +423,6 @@ export const getBentoniteComposition = async (brand: string, signal?: AbortSigna
     const response = await callGemini(model, prompt, {
       tools: [{ googleSearch: {} }],
       seed: 42,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       systemInstruction: `Вы ведущий эксперт-минералог и технолог буровых растворов. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
       
       ${ANTI_HALLUCINATION_RULES}
@@ -452,7 +448,7 @@ export const getBentoniteAnalogs = async (brand: string, signal?: AbortSignal) =
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   const prompt = `Найдите список марок бентопорошков, которые являются прямыми технологическими аналогами марки: ${brand} для применения в ГНБ.
   
@@ -470,7 +466,6 @@ export const getBentoniteAnalogs = async (brand: string, signal?: AbortSignal) =
     const response = await callGemini(model, prompt, {
       tools: [{ googleSearch: {} }],
       seed: 42,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       systemInstruction: `Вы эксперт-технолог по буровым растворам ГНБ. Ваша задача — подобрать аналоги бентонита.
       
       ${ANTI_HALLUCINATION_RULES}
@@ -496,7 +491,7 @@ export const getWaterTreatment = async (params: WaterParams, signal?: AbortSigna
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   const prompt = `Рассчитайте 3 варианта рецептуры водоподготовки для приготовления бурового раствора ГНБ на основе следующих параметров воды:
   - Температура: ${params.temperature} °C
@@ -522,7 +517,6 @@ export const getWaterTreatment = async (params: WaterParams, signal?: AbortSigna
   try {
     const response = await callGemini(model, prompt, {
       seed: 42,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       systemInstruction: "Вы ведущий инженер-технолог по буровым растворам ГНБ. Ваша цель — предоставить точные, практически применимые рецепты химической обработки воды. СТРОГО СОБЛЮДАЙТЕ ФОРМАТ: сначала блок РЕЦЕПТУРА, затем блок ОБОСНОВАНИЕ для каждого уровня. Категорически запрещено использовать LaTeX-символы. Ответ должен быть на русском языке, разбит на четкие смысловые блоки ДВОЙНЫМ переносом строки."
     }, signal);
 
