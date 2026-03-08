@@ -123,9 +123,9 @@ export default function App() {
       }
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
-        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+        friendlyError = "Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.";
       } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
+        friendlyError = "Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.";
       }
 
       setError(friendlyError);
@@ -180,9 +180,9 @@ export default function App() {
       } catch (e) {}
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
-        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+        friendlyError = "Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.";
       } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
+        friendlyError = "Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.";
       }
 
       setError(friendlyError);
@@ -237,9 +237,9 @@ export default function App() {
       } catch (e) {}
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
-        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+        friendlyError = "Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.";
       } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
+        friendlyError = "Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.";
       }
 
       setError(friendlyError);
@@ -354,9 +354,9 @@ export default function App() {
       } catch (e) {}
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
-        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+        friendlyError = "Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.";
       } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
+        friendlyError = "Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.";
       }
 
       setError(friendlyError);
@@ -407,9 +407,9 @@ export default function App() {
       } catch (e) {}
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
-        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+        friendlyError = "Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.";
       } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
+        friendlyError = "Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.";
       }
 
       setError(friendlyError);

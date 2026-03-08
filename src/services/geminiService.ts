@@ -131,9 +131,9 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
 
       if (errorInfo.retryable) {
         if (errorInfo.type === 'high_demand') {
-          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.");
+          throw new Error("Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.");
         }
-        throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.");
+        throw new Error("Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.");
       }
       
       if (error.message?.includes("API key not valid")) {
@@ -184,7 +184,7 @@ export const analyzeBentoniteStream = async (
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("API ключ не настроен.");
 
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   let crossingInfo = "";
   if (crossing) {
@@ -225,11 +225,11 @@ export const analyzeBentoniteStream = async (
   let retryCount = 0;
   while (retryCount <= retries) {
     try {
-      const currentConfig = {
+      const currentConfig: any = {
         temperature: 0,
         seed: 42,
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        tools: [{ googleSearch: {} }],
+        tools: retryCount === 0 ? [{ googleSearch: {} }] : [],
         systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS
       };
 
@@ -272,9 +272,9 @@ export const analyzeBentoniteStream = async (
 
       if (errorInfo.retryable) {
         if (errorInfo.type === 'high_demand') {
-          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.");
+          throw new Error("Сервер Gemini перегружен. Пожалуйста, подождите 5-10 секунд.");
         }
-        throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или перейдите на платный тариф в Google AI Studio.");
+        throw new Error("Лимит запросов исчерпан. Пожалуйста, подождите 1 минуту.");
       }
 
       throw error;
@@ -293,7 +293,7 @@ export const analyzeBentonite = async (
     return { text: "Ошибка: API ключ не настроен.", brand: "" };
   }
 
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   let crossingInfo = "";
   if (crossing) {
@@ -392,7 +392,7 @@ export const getBentoniteComposition = async (brand: string, signal?: AbortSigna
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   const prompt = `Предоставьте подробный технический состав и химико-физические показатели бентопорошка марки: ${brand}.
   
@@ -437,7 +437,7 @@ export const getBentoniteAnalogs = async (brand: string, signal?: AbortSignal) =
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   const prompt = `Найдите список марок бентопорошков, которые являются прямыми технологическими аналогами марки: ${brand} для применения в ГНБ.
   
@@ -481,7 +481,7 @@ export const getWaterTreatment = async (params: WaterParams, signal?: AbortSigna
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   const prompt = `Рассчитайте 3 варианта рецептуры водоподготовки для приготовления бурового раствора ГНБ на основе следующих параметров воды:
   - Температура: ${params.temperature} °C
