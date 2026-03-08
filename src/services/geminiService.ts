@@ -147,11 +147,12 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
 };
 
 const ANTI_HALLUCINATION_RULES = `
-КРИТИЧЕСКИЕ ПРАВИЛА:
-1. ВАЛИДАЦИЯ (ТОЛЬКО ДЛЯ ФОТО): Если предоставлено изображение, но на нем нет этикетки бентонита, выведите ТОЛЬКО: "Ошибка ввода данных: изображение не распознано."
-2. ВАЛИДАЦИЯ (ТОЛЬКО ДЛЯ ТЕКСТА): Если введена марка текстом, но она не существует или не относится к бентониту для ГНБ, выведите ТОЛЬКО: "Ошибка ввода данных: марка не идентифицирована."
-3. ПРОВЕРКА: Перед упоминанием марки убедитесь в её реальности через поиск.
-4. ЗАПРЕТ ГАЛЛЮЦИНАЦИЙ: Не выдумывайте характеристики, если они не найдены.
+КРИТИЧЕСКИЕ ПРАВИЛА ВАЛИДАЦИИ:
+1. Если вы получили ИЗОБРАЖЕНИЕ (фото), и на нем НЕТ этикетки бентонита -> выведите ТОЛЬКО: "Ошибка ввода данных: изображение не распознано."
+2. Если вы получили ТЕКСТ (название), и это НЕ название марки бентонита для ГНБ -> выведите ТОЛЬКО: "Ошибка ввода данных: марка не идентифицирована."
+3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выводить ошибку "изображение не распознано", если вам дан ТЕКСТ.
+4. Всегда проверяйте реальность марки через Google Search перед анализом.
+5. Не выдумывайте характеристики, если они не найдены в официальных источниках.
 `;
 
 const SYSTEM_INSTRUCTION_ANALYSIS = `Вы — инженер ГНБ. Ваша задача: быстрый и точный тех-анализ бентонита.
@@ -215,11 +216,11 @@ export const analyzeBentoniteStream = async (
   }
 
   const contents = typeof input === 'string' 
-    ? `Find technical properties and HDD/tunneling application recommendations for the following bentonite brand: "${input}". If this is a real bentonite brand, provide the analysis. ${crossingInfo}`
+    ? `ВНИМАНИЕ: ВАМ ДАН ТЕКСТ (НАЗВАНИЕ МАРКИ). Проанализируйте марку бентонита: "${input}". Если это реальная марка для ГНБ, предоставьте тех-анализ. ${crossingInfo}`
     : {
         parts: [
           { inlineData: input },
-          { text: `Analyze this bentonite label image. Identify the brand and provide technical properties. ${crossingInfo}` }
+          { text: `ВНИМАНИЕ: ВАМ ДАНО ИЗОБРАЖЕНИЕ (ФОТО ЭТИКЕТКИ). Распознайте марку на фото и предоставьте тех-анализ. ${crossingInfo}` }
         ]
       };
 
@@ -243,7 +244,15 @@ export const analyzeBentoniteStream = async (
       let fullText = "";
       for await (const chunk of responseStream) {
         if (signal?.aborted) throw new Error("Request aborted");
-        const text = chunk.text || "";
+        let text = chunk.text || "";
+        
+        // Anti-hallucination hack: if input is text but model says image not recognized
+        if (typeof input === 'string' && (text.includes("изображение не распознано") || fullText.includes("изображение не распознано"))) {
+           fullText = "Ошибка ввода данных: марка не идентифицирована.";
+           onChunk(fullText);
+           return { text: fullText, brand: "" };
+        }
+
         fullText += text;
         onChunk(stripMetaText(fullText));
       }
@@ -324,11 +333,11 @@ export const analyzeBentonite = async (
   }
 
   const contents = typeof input === 'string' 
-    ? `Find technical properties and HDD/tunneling application recommendations for the following bentonite brand: "${input}". If this is a real bentonite brand, provide the analysis. ${crossingInfo}`
+    ? `ВНИМАНИЕ: ВАМ ДАН ТЕКСТ (НАЗВАНИЕ МАРКИ). Проанализируйте марку бентонита: "${input}". Если это реальная марка для ГНБ, предоставьте тех-анализ. ${crossingInfo}`
     : {
         parts: [
           { inlineData: input },
-          { text: `Analyze this bentonite label image. Identify the brand and provide technical properties. ${crossingInfo}` }
+          { text: `ВНИМАНИЕ: ВАМ ДАНО ИЗОБРАЖЕНИЕ (ФОТО ЭТИКЕТКИ). Распознайте марку на фото и предоставьте тех-анализ. ${crossingInfo}` }
         ]
       };
 
