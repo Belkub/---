@@ -20,15 +20,18 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import { analyzeBentonite, getWaterTreatment, WaterParams, getBentoniteComposition, getBentoniteAnalogs } from './services/geminiService';
+import { analyzeBentoniteStream, getWaterTreatment, WaterParams, getBentoniteComposition, getBentoniteAnalogs } from './services/geminiService';
 
 type Tab = 'bentonite' | 'water';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('bentonite');
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<string>('');
   const [result, setResult] = useState<string | null>(null);
+  const [resultTab, setResultTab] = useState<'analysis' | 'composition' | 'analogs' | 'water'>('analysis');
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Bentonite Search State
   const [brandName, setBrandName] = useState('');
@@ -60,14 +63,31 @@ export default function App() {
     e?.preventDefault();
     if (!brandName.trim() || loading) return;
     
+    // Abort previous request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     setLoading(true);
+    setLoadingStep('Поиск информации о бренде...');
     setError(null);
-    setResult(null);
+    setResult('');
+    setResultTab('analysis');
     setUploadedImageUrl(null);
     
     try {
       const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
-      const response = await analyzeBentonite(brandName, { ...crossingParams, soilType: finalSoilType });
+      
+      const response = await analyzeBentoniteStream(
+        brandName, 
+        { ...crossingParams, soilType: finalSoilType },
+        (chunk) => {
+          setResult(chunk);
+          if (loadingStep !== 'Формирование отчета...') setLoadingStep('Формирование отчета...');
+        },
+        abortControllerRef.current?.signal
+      );
       
       if (response.text.startsWith("Ошибка:")) {
         setError(response.text);
@@ -76,10 +96,13 @@ export default function App() {
         if (response.brand && response.brand !== brandName) setBrandName(response.brand);
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
       console.error(err);
     } finally {
       setLoading(false);
+      setLoadingStep('');
+      abortControllerRef.current = null;
     }
   };
 
@@ -90,20 +113,29 @@ export default function App() {
     }
     
     setLoading(true);
+    setLoadingStep('Поиск состава...');
     setError(null);
     setResult(null);
+    setResultTab('composition');
+
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+
     try {
-      const data = await getBentoniteComposition(brandName);
+      const data = await getBentoniteComposition(brandName, abortControllerRef.current.signal);
       if (data.startsWith("Ошибка:")) {
         setError(data);
       } else {
         setResult(data || "Информация о составе не найдена.");
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Не удалось получить состав бентонита.");
       console.error(err);
     } finally {
       setLoading(false);
+      setLoadingStep('');
+      abortControllerRef.current = null;
     }
   };
 
@@ -114,80 +146,150 @@ export default function App() {
     }
     
     setLoading(true);
+    setLoadingStep('Поиск аналогов...');
     setError(null);
     setResult(null);
+    setResultTab('analogs');
+
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+
     try {
-      const data = await getBentoniteAnalogs(brandName);
+      const data = await getBentoniteAnalogs(brandName, abortControllerRef.current.signal);
       if (data.startsWith("Ошибка:")) {
         setError(data);
       } else {
         setResult(data || "Аналоги не найдены.");
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Не удалось получить список аналогов.");
       console.error(err);
     } finally {
       setLoading(false);
+      setLoadingStep('');
+      abortControllerRef.current = null;
     }
+  };
+
+  const compressImage = (file: File): Promise<{ data: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1024;
+          const MAX_HEIGHT = 1024;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          resolve({
+            data: dataUrl.split(',')[1],
+            mimeType: 'image/jpeg'
+          });
+        };
+        img.onerror = reject;
+      };
+      reader.onerror = reject;
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     setLoading(true);
+    setLoadingStep('Сжатие изображения...');
     setError(null);
-    setResult(null);
+    setResult('');
+    setResultTab('analysis');
+    
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const imageUrl = reader.result as string;
-          setUploadedImageUrl(imageUrl);
-          const base64Data = imageUrl.split(',')[1];
-          const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
-          const response = await analyzeBentonite({
-            data: base64Data,
-            mimeType: file.type
-          }, { ...crossingParams, soilType: finalSoilType });
-          
-          if (response.text.startsWith("Ошибка:")) {
-            setError(response.text);
-          } else {
-            setResult(response.text || "Не удалось проанализировать изображение.");
-            if (response.brand) setBrandName(response.brand);
-          }
-        } catch (err: any) {
-          setError(err.message || "Ошибка анализа изображения.");
-          console.error(err);
-        } finally {
-          setLoading(false);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      setError("Ошибка обработки изображения.");
+      const compressed = await compressImage(file);
+      setUploadedImageUrl(`data:${compressed.mimeType};base64,${compressed.data}`);
+      
+      setLoadingStep('Распознавание этикетки...');
+      const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
+      
+      const response = await analyzeBentoniteStream(
+        compressed, 
+        { ...crossingParams, soilType: finalSoilType },
+        (chunk) => {
+          setResult(chunk);
+          if (loadingStep !== 'Анализ технических данных...') setLoadingStep('Анализ технических данных...');
+        },
+        abortControllerRef.current?.signal
+      );
+      
+      if (response.text.startsWith("Ошибка:")) {
+        setError(response.text);
+      } else {
+        setResult(response.text || "Не удалось проанализировать изображение.");
+        if (response.brand) setBrandName(response.brand);
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || "Ошибка анализа изображения.");
+      console.error(err);
+    } finally {
       setLoading(false);
+      setLoadingStep('');
+      abortControllerRef.current = null;
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleWaterTreatment = async () => {
     setLoading(true);
+    setLoadingStep('Расчет рецептур...');
     setError(null);
     setResult(null);
+    setResultTab('water');
+
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+
     try {
-      const data = await getWaterTreatment(waterParams);
+      const data = await getWaterTreatment(waterParams, abortControllerRef.current.signal);
       if (data.startsWith("Ошибка:")) {
         setError(data);
       } else {
         setResult(data || "Рекомендации не сформированы.");
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Не удалось сформировать рецепты водоподготовки.");
       console.error(err);
     } finally {
       setLoading(false);
+      setLoadingStep('');
+      abortControllerRef.current = null;
     }
   };
 
@@ -458,25 +560,45 @@ export default function App() {
           <div className="bg-white border border-[#141414] min-h-[500px] flex flex-col shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
             <div className="border-b border-[#141414] p-4 flex justify-between items-center bg-gray-50">
               <div className="flex items-center gap-4">
-                <span className="text-[10px] uppercase tracking-widest font-mono opacity-50">Отчет об анализе</span>
-                {activeTab === 'bentonite' && (brandName || uploadedImageUrl) && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={handleCompositionSearch}
-                      disabled={loading}
-                      className="text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] hover:bg-[#141414] hover:text-white transition-colors disabled:opacity-50"
-                    >
-                      Состав бентопорошка
-                    </button>
-                    <button 
-                      onClick={handleAnalogsSearch}
-                      disabled={loading}
-                      className="text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] hover:bg-[#141414] hover:text-white transition-colors disabled:opacity-50"
-                    >
-                      Аналоги
-                    </button>
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      if (activeTab === 'bentonite' && resultTab !== 'analysis') {
+                        handleBentoniteSearch();
+                      } else if (activeTab === 'water' && resultTab !== 'water') {
+                        handleWaterTreatment();
+                      }
+                    }}
+                    disabled={loading || (activeTab === 'bentonite' && !brandName && !uploadedImageUrl)}
+                    className={`text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] transition-colors disabled:opacity-50 ${
+                      (resultTab === 'analysis' || resultTab === 'water') ? 'bg-[#141414] text-white' : 'hover:bg-[#141414] hover:text-white'
+                    }`}
+                  >
+                    {activeTab === 'bentonite' ? 'Отчет об анализе' : 'Рецепты воды'}
+                  </button>
+                  {activeTab === 'bentonite' && (brandName || uploadedImageUrl) && (
+                    <>
+                      <button 
+                        onClick={handleCompositionSearch}
+                        disabled={loading}
+                        className={`text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] transition-colors disabled:opacity-50 ${
+                          resultTab === 'composition' ? 'bg-[#141414] text-white' : 'hover:bg-[#141414] hover:text-white'
+                        }`}
+                      >
+                        Состав бентопорошка
+                      </button>
+                      <button 
+                        onClick={handleAnalogsSearch}
+                        disabled={loading}
+                        className={`text-[10px] uppercase tracking-widest font-mono px-3 py-1 border border-[#141414] transition-colors disabled:opacity-50 ${
+                          resultTab === 'analogs' ? 'bg-[#141414] text-white' : 'hover:bg-[#141414] hover:text-white'
+                        }`}
+                      >
+                        Аналоги
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="flex gap-1">
                 <div className="w-2 h-2 rounded-full bg-[#141414]"></div>
@@ -486,10 +608,24 @@ export default function App() {
             </div>
 
             <div className="flex-1 p-8 overflow-y-auto">
-              {loading ? (
-                <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40">
-                  <Loader2 className="animate-spin" size={48} />
-                  <p className="font-mono text-xs uppercase tracking-widest">Обработка данных...</p>
+              {loading && !result ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4 opacity-60">
+                  <div className="relative">
+                    <Loader2 className="animate-spin text-[#141414]" size={48} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-2 h-2 bg-[#141414] rounded-full animate-pulse"></div>
+                    </div>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="font-mono text-xs uppercase tracking-widest font-bold">Обработка данных</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wider opacity-60 animate-pulse">{loadingStep || 'Пожалуйста, подождите...'}</p>
+                    <button 
+                      onClick={() => abortControllerRef.current?.abort()}
+                      className="mt-4 px-4 py-1 border border-[#141414] text-[8px] uppercase tracking-widest font-mono hover:bg-[#141414] hover:text-white transition-colors"
+                    >
+                      Отменить
+                    </button>
+                  </div>
                 </div>
               ) : error ? (
                 <div className="h-full flex flex-col items-center justify-center gap-6 text-center">
