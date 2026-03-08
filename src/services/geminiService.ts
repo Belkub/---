@@ -148,9 +148,10 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
 
 const ANTI_HALLUCINATION_RULES = `
 КРИТИЧЕСКИЕ ПРАВИЛА:
-1. ВАЛИДАЦИЯ: Если на фото нет этикетки бентонита, выведите ТОЛЬКО: "Ошибка ввода данных: изображение не распознано."
-2. ПРОВЕРКА: Перед упоминанием марки убедитесь в её реальности через поиск.
-3. ЗАПРЕТ ГАЛЛЮЦИНАЦИЙ: Не выдумывайте характеристики, если они не найдены.
+1. ВАЛИДАЦИЯ (ТОЛЬКО ДЛЯ ФОТО): Если предоставлено изображение, но на нем нет этикетки бентонита, выведите ТОЛЬКО: "Ошибка ввода данных: изображение не распознано."
+2. ВАЛИДАЦИЯ (ТОЛЬКО ДЛЯ ТЕКСТА): Если введена марка текстом, но она не существует или не относится к бентониту для ГНБ, выведите ТОЛЬКО: "Ошибка ввода данных: марка не идентифицирована."
+3. ПРОВЕРКА: Перед упоминанием марки убедитесь в её реальности через поиск.
+4. ЗАПРЕТ ГАЛЛЮЦИНАЦИЙ: Не выдумывайте характеристики, если они не найдены.
 `;
 
 const SYSTEM_INSTRUCTION_ANALYSIS = `Вы — инженер ГНБ. Ваша задача: быстрый и точный тех-анализ бентонита.
@@ -214,11 +215,11 @@ export const analyzeBentoniteStream = async (
   }
 
   const contents = typeof input === 'string' 
-    ? `Find technical properties and HDD/tunneling application recommendations for bentonite brand: ${input}. ${crossingInfo}`
+    ? `Find technical properties and HDD/tunneling application recommendations for the following bentonite brand: "${input}". If this is a real bentonite brand, provide the analysis. ${crossingInfo}`
     : {
         parts: [
           { inlineData: input },
-          { text: `Analyze this bentonite label. Identify the brand and provide technical properties. ${crossingInfo}` }
+          { text: `Analyze this bentonite label image. Identify the brand and provide technical properties. ${crossingInfo}` }
         ]
       };
 
@@ -323,11 +324,11 @@ export const analyzeBentonite = async (
   }
 
   const contents = typeof input === 'string' 
-    ? `Find technical properties and HDD/tunneling application recommendations for bentonite brand: ${input}. ${crossingInfo}`
+    ? `Find technical properties and HDD/tunneling application recommendations for the following bentonite brand: "${input}". If this is a real bentonite brand, provide the analysis. ${crossingInfo}`
     : {
         parts: [
           { inlineData: input },
-          { text: `Analyze this bentonite label. Identify the brand and provide technical properties. ${crossingInfo}` }
+          { text: `Analyze this bentonite label image. Identify the brand and provide technical properties. ${crossingInfo}` }
         ]
       };
 
