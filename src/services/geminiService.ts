@@ -148,16 +148,12 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
 
 const ANTI_HALLUCINATION_RULES = `
 КРИТИЧЕСКИЕ ПРАВИЛА ВАЛИДАЦИИ:
-1. Если вы получили ИЗОБРАЖЕНИЕ (фото), и на нем НЕТ этикетки бентонита -> выведите ТОЛЬКО: "Ошибка ввода данных: изображение не распознано."
-2. Если вы получили ТЕКСТ (название), и это НЕ название марки бентонита для ГНБ -> выведите ТОЛЬКО: "Ошибка ввода данных: марка не идентифицирована."
-3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выводить ошибку "изображение не распознано", если вам дан ТЕКСТ.
-4. Всегда проверяйте реальность марки через Google Search перед анализом.
-5. Не выдумывайте характеристики, если они не найдены в официальных источниках.
+1. Если на входе ИЗОБРАЖЕНИЕ и на нем нет бентонита -> "Ошибка ввода данных: изображение не распознано."
+2. Если на входе ТЕКСТ и это не марка бентонита -> "Ошибка ввода данных: марка не идентифицирована."
+3. ЗАПРЕЩЕНО путать типы ввода.
 `;
 
-const SYSTEM_INSTRUCTION_ANALYSIS = `Вы — инженер ГНБ. Ваша задача: быстрый и точный тех-анализ бентонита.
-
-${ANTI_HALLUCINATION_RULES}
+const SYSTEM_INSTRUCTION_BASE = `Вы — инженер ГНБ. Ваша задача: быстрый и точный тех-анализ бентонита.
 
 ПРАВИЛА:
 1. СТРУКТУРА: 4-6 кратких абзацев. Разделяйте абзацы \\n\\n.
@@ -166,6 +162,21 @@ ${ANTI_HALLUCINATION_RULES}
 4. ФОРМУЛА ОБЪЕМА: V = L * 3.14 * (D/2000)^2 * K. Покажите расчет пошагово.
 5. ЗАПРЕТЫ: Без LaTeX, без контактов, без внутренних размышлений.
 6. СКОРОСТЬ: Пишите по существу, без лишних вступлений.`;
+
+const SYSTEM_INSTRUCTION_TEXT = `${SYSTEM_INSTRUCTION_BASE}
+
+КРИТИЧЕСКИЕ ПРАВИЛА ДЛЯ ТЕКСТОВОГО ВВОДА:
+1. Вам дано ТЕКСТОВОЕ НАЗВАНИЕ марки.
+2. ЗАПРЕЩЕНО упоминать изображения, фото или ошибки распознавания картинок.
+3. Если марка не найдена в базе ГНБ -> выведите ТОЛЬКО: "Ошибка ввода данных: марка не идентифицирована."
+4. Используйте Google Search для подтверждения существования марки.`;
+
+const SYSTEM_INSTRUCTION_IMAGE = `${SYSTEM_INSTRUCTION_BASE}
+
+КРИТИЧЕСКИЕ ПРАВИЛА ДЛЯ ФОТО:
+1. Вам дано ИЗОБРАЖЕНИЕ (фото этикетки).
+2. Если на фото нет бентонита или текст не читаем -> выведите ТОЛЬКО: "Ошибка ввода данных: изображение не распознано."
+3. Распознайте марку и проведите анализ.`;
 
 const stripMetaText = (text: string) => {
   if (!text) return "";
@@ -186,41 +197,31 @@ export const analyzeBentoniteStream = async (
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("API ключ не настроен.");
 
-  const model = "gemini-3.1-flash-lite-preview";
+  const model = "gemini-3.1-pro-preview";
   
   let crossingInfo = "";
   if (crossing) {
     crossingInfo = `
-    Параметры перехода:
-    - Длина (L): ${crossing.length} м
-    - Диаметр расширителя (D): ${crossing.reamerDiameter} мм
+    ДАННЫЕ ДЛЯ ТЕХНИЧЕСКОГО РАСЧЕТА:
+    - Длина перехода: ${crossing.length} м
+    - Диаметр расширителя: ${crossing.reamerDiameter} мм
     - Тип грунта: ${crossing.soilType}
     
-    На основе этих параметров, пожалуйста, рассчитайте:
-    1. Рекомендуемую концентрацию этого бентонита (кг/м3) с учетом типа грунта.
-    2. Необходимые добавки (полимеры, смазки и т.д.) и их концентрации, специфичные для данного типа грунта.
-    3. Общий оценочный объем бурового раствора (V). 
-       ИСПОЛЬЗУЙТЕ ФОРМУЛУ: V = L * 3.14 * (D/2000)^2 * K. 
-       Где D/2000 — радиус скважины в метрах (D - диаметр расширителя в мм).
-       K — коэффициент выноса шлама (безопасности). 
-       СПРАВОЧНО ДЛЯ K: Глина K=1.5-2.0, Суглинок K=2.0-3.0, Песок K=3.0-5.0, Плывун K=5.0+.
-       ОБЯЗАТЕЛЬНО: 
-       - Укажите выбранный коэффициент K и обоснуйте его.
-       - Покажите пошаговый расчет: Площадь сечения * Длина * K.
-       - Результат в м3.
-       - ЗАПРЕЩЕНО использовать LaTeX или спецсимволы. Пишите формулы простым текстом.
-    4. Общий расчетный расход бентонита (в кг или тоннах) и других реагентов на весь переход.
-    
-    Все расчеты должны быть математически точными и воспроизводимыми для одинаковых исходных данных.
+    ТРЕБУЕМЫЕ РАСЧЕТЫ (ОБЯЗАТЕЛЬНО):
+    1. Концентрация бентонита (кг/м3).
+    2. Добавки и их дозировки.
+    3. Объем раствора V = L * 3.14 * (D/2000)^2 * K.
+       Примите K: Песок (3-5), Глина (1.5-2), Суглинок (2-3).
+    4. Итоговый расход материалов.
     `;
   }
 
   const contents = typeof input === 'string' 
-    ? `ВНИМАНИЕ: ВАМ ДАН ТЕКСТ (НАЗВАНИЕ МАРКИ). Проанализируйте марку бентонита: "${input}". Если это реальная марка для ГНБ, предоставьте тех-анализ. ${crossingInfo}`
+    ? { parts: [{ text: `ИНСТРУКЦИЯ: Проведите анализ бентонита по ТЕКСТОВОМУ НАЗВАНИЮ. \nМАРКА: "${input}". \n\n${crossingInfo}` }] }
     : {
         parts: [
           { inlineData: input },
-          { text: `ВНИМАНИЕ: ВАМ ДАНО ИЗОБРАЖЕНИЕ (ФОТО ЭТИКЕТКИ). Распознайте марку на фото и предоставьте тех-анализ. ${crossingInfo}` }
+          { text: `ИНСТРУКЦИЯ: Распознайте марку на ФОТО ЭТИКЕТКИ и проведите анализ. \n\n${crossingInfo}` }
         ]
       };
 
@@ -232,7 +233,7 @@ export const analyzeBentoniteStream = async (
         seed: 42,
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         tools: retryCount === 0 ? [{ googleSearch: {} }] : [],
-        systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS
+        systemInstruction: typeof input === 'string' ? SYSTEM_INSTRUCTION_TEXT : SYSTEM_INSTRUCTION_IMAGE
       };
 
       const responseStream = await ai.models.generateContentStream({
@@ -246,11 +247,25 @@ export const analyzeBentoniteStream = async (
         if (signal?.aborted) throw new Error("Request aborted");
         let text = chunk.text || "";
         
-        // Anti-hallucination hack: if input is text but model says image not recognized
-        if (typeof input === 'string' && (text.includes("изображение не распознано") || fullText.includes("изображение не распознано"))) {
-           fullText = "Ошибка ввода данных: марка не идентифицирована.";
-           onChunk(fullText);
-           return { text: fullText, brand: "" };
+        // Anti-hallucination hack: check for specific error phrases
+        const lowerText = text.toLowerCase();
+        const lowerFull = fullText.toLowerCase();
+        
+        // If it's text input but model mentions image recognition errors
+        if (typeof input === 'string' && (
+          lowerText.includes("изображение") || 
+          lowerFull.includes("изображение") ||
+          lowerText.includes("фото") ||
+          lowerFull.includes("фото") ||
+          lowerText.includes("распознано") ||
+          lowerFull.includes("распознано")
+        )) {
+           // If it's an error message, we replace it
+           if (lowerText.includes("ошибка") || lowerFull.includes("ошибка")) {
+             fullText = "Ошибка ввода данных: марка не идентифицирована в базе ГНБ.";
+             onChunk(fullText);
+             return { text: fullText, brand: "" };
+           }
         }
 
         fullText += text;
@@ -303,41 +318,31 @@ export const analyzeBentonite = async (
     return { text: "Ошибка: API ключ не настроен.", brand: "" };
   }
 
-  const model = "gemini-3.1-flash-lite-preview";
+  const model = "gemini-3.1-pro-preview";
   
   let crossingInfo = "";
   if (crossing) {
     crossingInfo = `
-    Параметры перехода:
-    - Длина (L): ${crossing.length} м
-    - Диаметр расширителя (D): ${crossing.reamerDiameter} мм
+    ДАННЫЕ ДЛЯ ТЕХНИЧЕСКОГО РАСЧЕТА:
+    - Длина перехода: ${crossing.length} м
+    - Диаметр расширителя: ${crossing.reamerDiameter} мм
     - Тип грунта: ${crossing.soilType}
     
-    На основе этих параметров, пожалуйста, рассчитайте:
-    1. Рекомендуемую концентрацию этого бентонита (кг/м3) с учетом типа грунта.
-    2. Необходимые добавки (полимеры, смазки и т.д.) и их концентрации, специфичные для данного типа грунта.
-    3. Общий оценочный объем бурового раствора (V). 
-       ИСПОЛЬЗУЙТЕ ФОРМУЛУ: V = L * 3.14 * (D/2000)^2 * K. 
-       Где D/2000 — радиус скважины в метрах (D - диаметр расширителя в мм).
-       K — коэффициент выноса шлама (безопасности). 
-       СПРАВОЧНО ДЛЯ K: Глина K=1.5-2.0, Суглинок K=2.0-3.0, Песок K=3.0-5.0, Плывун K=5.0+.
-       ОБЯЗАТЕЛЬНО: 
-       - Укажите выбранный коэффициент K и обоснуйте его.
-       - Покажите пошаговый расчет: Площадь сечения * Длина * K.
-       - Результат в м3.
-       - ЗАПРЕЩЕНО использовать LaTeX или спецсимволы. Пишите формулы простым текстом.
-    4. Общий расчетный расход бентонита (в кг или тоннах) и других реагентов на весь переход.
-    
-    Все расчеты должны быть математически точными и воспроизводимыми для одинаковых исходных данных.
+    ТРЕБУЕМЫЕ РАСЧЕТЫ (ОБЯЗАТЕЛЬНО):
+    1. Концентрация бентонита (кг/м3).
+    2. Добавки и их дозировки.
+    3. Объем раствора V = L * 3.14 * (D/2000)^2 * K.
+       Примите K: Песок (3-5), Глина (1.5-2), Суглинок (2-3).
+    4. Итоговый расход материалов.
     `;
   }
 
   const contents = typeof input === 'string' 
-    ? `ВНИМАНИЕ: ВАМ ДАН ТЕКСТ (НАЗВАНИЕ МАРКИ). Проанализируйте марку бентонита: "${input}". Если это реальная марка для ГНБ, предоставьте тех-анализ. ${crossingInfo}`
+    ? { parts: [{ text: `ИНСТРУКЦИЯ: Проведите анализ бентонита по ТЕКСТОВОМУ НАЗВАНИЮ. \nМАРКА: "${input}". \n\n${crossingInfo}` }] }
     : {
         parts: [
           { inlineData: input },
-          { text: `ВНИМАНИЕ: ВАМ ДАНО ИЗОБРАЖЕНИЕ (ФОТО ЭТИКЕТКИ). Распознайте марку на фото и предоставьте тех-анализ. ${crossingInfo}` }
+          { text: `ИНСТРУКЦИЯ: Распознайте марку на ФОТО ЭТИКЕТКИ и проведите анализ. \n\n${crossingInfo}` }
         ]
       };
 
@@ -360,7 +365,7 @@ export const analyzeBentonite = async (
         },
         required: []
       },
-      systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS
+      systemInstruction: typeof input === 'string' ? SYSTEM_INSTRUCTION_TEXT : SYSTEM_INSTRUCTION_IMAGE
     }, signal);
 
     let textResponse = response.text || "";
@@ -402,7 +407,7 @@ export const getBentoniteComposition = async (brand: string, signal?: AbortSigna
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3.1-flash-lite-preview";
+  const model = "gemini-3.1-pro-preview";
   
   const prompt = `Предоставьте подробный технический состав и химико-физические показатели бентопорошка марки: ${brand}.
   
@@ -447,7 +452,7 @@ export const getBentoniteAnalogs = async (brand: string, signal?: AbortSignal) =
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3.1-flash-lite-preview";
+  const model = "gemini-3.1-pro-preview";
   
   const prompt = `Найдите список марок бентопорошков, которые являются прямыми технологическими аналогами марки: ${brand} для применения в ГНБ.
   
@@ -491,7 +496,7 @@ export const getWaterTreatment = async (params: WaterParams, signal?: AbortSigna
   const apiKey = getApiKey();
   if (!apiKey) return "Ошибка: API ключ не настроен.";
 
-  const model = "gemini-3.1-flash-lite-preview";
+  const model = "gemini-3.1-pro-preview";
   
   const prompt = `Рассчитайте 3 варианта рецептуры водоподготовки для приготовления бурового раствора ГНБ на основе следующих параметров воды:
   - Температура: ${params.temperature} °C
