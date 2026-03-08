@@ -124,8 +124,8 @@ export default function App() {
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
         friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
-      } else if (friendlyError.includes("high demand") || friendlyError.includes("503")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.";
+      } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
+        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
       }
 
       setError(friendlyError);
@@ -181,8 +181,8 @@ export default function App() {
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
         friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
-      } else if (friendlyError.includes("high demand") || friendlyError.includes("503")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.";
+      } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
+        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
       }
 
       setError(friendlyError);
@@ -238,8 +238,8 @@ export default function App() {
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
         friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
-      } else if (friendlyError.includes("high demand") || friendlyError.includes("503")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.";
+      } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
+        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
       }
 
       setError(friendlyError);
@@ -355,8 +355,8 @@ export default function App() {
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
         friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
-      } else if (friendlyError.includes("high demand") || friendlyError.includes("503")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.";
+      } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
+        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
       }
 
       setError(friendlyError);
@@ -408,8 +408,8 @@ export default function App() {
 
       if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
         friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
-      } else if (friendlyError.includes("high demand") || friendlyError.includes("503")) {
-        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.";
+      } else if (friendlyError.includes("high demand") || friendlyError.includes("503") || friendlyError.includes("overloaded")) {
+        friendlyError = "Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.";
       }
 
       setError(friendlyError);

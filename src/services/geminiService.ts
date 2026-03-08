@@ -35,33 +35,42 @@ export interface CrossingParams {
   soilType: string;
 }
 
-const isRetryableError = (error: any): boolean => {
-  const errorMessage = error.message || "";
-  const errorStatus = error.status || "";
-  const errorDetails = JSON.stringify(error);
+const isRetryableError = (error: any): { retryable: boolean; type: 'quota' | 'high_demand' | 'other' } => {
+  const errorMessage = (error.message || "").toLowerCase();
+  const errorStatus = (error.status || "").toUpperCase();
+  const errorDetails = JSON.stringify(error).toLowerCase();
   
   const isQuota = 
     errorMessage.includes("429") || 
-    errorMessage.includes("RESOURCE_EXHAUSTED") ||
+    errorMessage.includes("resource_exhausted") ||
     errorStatus === "RESOURCE_EXHAUSTED" ||
     errorDetails.includes("429") ||
-    errorDetails.includes("RESOURCE_EXHAUSTED") ||
+    errorDetails.includes("resource_exhausted") ||
     (error.response && error.response.status === 429);
+
+  if (isQuota) return { retryable: true, type: 'quota' };
 
   const isHighDemand = 
     errorMessage.includes("503") ||
     errorMessage.includes("high demand") ||
-    errorMessage.includes("Service Unavailable") ||
+    errorMessage.includes("service unavailable") ||
+    errorMessage.includes("overloaded") ||
+    errorMessage.includes("deadline exceeded") ||
     errorStatus === "SERVICE_UNAVAILABLE" ||
+    errorStatus === "DEADLINE_EXCEEDED" ||
     errorDetails.includes("503") ||
     errorDetails.includes("high demand") ||
+    errorDetails.includes("overloaded") ||
+    errorDetails.includes("deadline exceeded") ||
     (error.response && error.response.status === 503);
 
-  return isQuota || isHighDemand;
+  if (isHighDemand) return { retryable: true, type: 'high_demand' };
+
+  return { retryable: false, type: 'other' };
 };
 
-const callGemini = async (model: string, contents: any, config: any, signal?: AbortSignal, retries = 2) => {
-  const TIMEOUT = 45000; // 45 seconds timeout
+const callGemini = async (model: string, contents: any, config: any, signal?: AbortSignal, retries = 4) => {
+  const TIMEOUT = 60000; // Increased to 60 seconds
   let retryCount = 0;
   
   while (retryCount <= retries) {
@@ -102,22 +111,27 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
         if (signal?.aborted) throw error;
         if (retryCount < retries) {
           retryCount++;
+          const delay = 1000 * retryCount + Math.random() * 500;
+          await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
-        throw new Error("Превышено время ожидания ответа (45 сек). Попробуйте еще раз.");
+        throw new Error("Превышено время ожидания ответа (60 сек). Пожалуйста, попробуйте еще раз.");
       }
 
-      if (isRetryableError(error) && retryCount < retries) {
+      const errorInfo = isRetryableError(error);
+      if (errorInfo.retryable && retryCount < retries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1500; // Slightly longer delay for high demand
-        console.warn(`Transient error or Quota exceeded. Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
+        const baseDelay = errorInfo.type === 'high_demand' ? 3000 : 2000;
+        const delay = Math.pow(2, retryCount) * baseDelay + Math.random() * 1000;
+        
+        console.warn(`Retryable error (${errorInfo.type}). Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
-      if (isRetryableError(error)) {
-        if (error.message?.includes("high demand") || error.message?.includes("503")) {
-          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.");
+      if (errorInfo.retryable) {
+        if (errorInfo.type === 'high_demand') {
+          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.");
         }
         throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.");
       }
@@ -129,7 +143,7 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
       throw error;
     }
   }
-  throw new Error("Не удалось получить ответ от нейросети.");
+  throw new Error("Не удалось получить ответ от нейросети после нескольких попыток.");
 };
 
 const ANTI_HALLUCINATION_RULES = `
@@ -181,7 +195,7 @@ export const analyzeBentoniteStream = async (
   crossing: CrossingParams | undefined,
   onChunk: (chunk: string) => void,
   signal?: AbortSignal,
-  retries = 2
+  retries = 4
 ) => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("API ключ не настроен.");
@@ -262,17 +276,20 @@ export const analyzeBentoniteStream = async (
     } catch (error: any) {
       if (signal?.aborted) throw error;
       
-      if (isRetryableError(error) && retryCount < retries) {
+      const errorInfo = isRetryableError(error);
+      if (errorInfo.retryable && retryCount < retries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1500;
-        console.warn(`Transient error in stream. Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
+        const baseDelay = errorInfo.type === 'high_demand' ? 3000 : 2000;
+        const delay = Math.pow(2, retryCount) * baseDelay + Math.random() * 1000;
+        
+        console.warn(`Retryable error in stream (${errorInfo.type}). Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
-      if (isRetryableError(error)) {
-        if (error.message?.includes("high demand") || error.message?.includes("503")) {
-          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.");
+      if (errorInfo.retryable) {
+        if (errorInfo.type === 'high_demand') {
+          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 15-30 секунд и попробуйте снова.");
         }
         throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или перейдите на платный тариф в Google AI Studio.");
       }
@@ -280,7 +297,7 @@ export const analyzeBentoniteStream = async (
       throw error;
     }
   }
-  throw new Error("Не удалось получить ответ от нейросети.");
+  throw new Error("Не удалось получить ответ от нейросети после нескольких попыток.");
 };
 
 export const analyzeBentonite = async (
