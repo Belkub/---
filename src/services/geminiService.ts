@@ -36,8 +36,8 @@ export interface CrossingParams {
 }
 
 const isRetryableError = (error: any): { retryable: boolean; type: 'quota' | 'high_demand' | 'other' } => {
-  const errorMessage = (error.message || "").toLowerCase();
-  const errorStatus = (error.status || "").toUpperCase();
+  const errorMessage = String(error.message || "").toLowerCase();
+  const errorStatus = String(error.status || "").toUpperCase();
   const errorDetails = JSON.stringify(error).toLowerCase();
   
   const isQuota = 
