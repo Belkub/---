@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 
 const getApiKey = () => {
   return (import.meta as any).env?.VITE_GEMINI_API_KEY || 
@@ -68,6 +68,7 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
       const currentConfig = { 
         temperature: 0,
         seed: 42,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         ...config 
       };
       
@@ -216,6 +217,7 @@ export const analyzeBentoniteStream = async (
       const currentConfig = {
         temperature: 0,
         seed: 42,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         tools: retryCount > 0 ? [] : [{ googleSearch: {} }],
         systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS
       };
@@ -317,6 +319,7 @@ export const analyzeBentonite = async (
     const response = await callGemini(model, contents, {
       tools: [{ googleSearch: {} }],
       seed: 42,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -392,6 +395,7 @@ export const getBentoniteComposition = async (brand: string, signal?: AbortSigna
     const response = await callGemini(model, prompt, {
       tools: [{ googleSearch: {} }],
       seed: 42,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       systemInstruction: `Вы ведущий эксперт-минералог и технолог буровых растворов. Ваша задача — предоставлять ИСКЛЮЧИТЕЛЬНО ДОСТОВЕРНУЮ техническую информацию.
       
       ${ANTI_HALLUCINATION_RULES}
@@ -435,6 +439,7 @@ export const getBentoniteAnalogs = async (brand: string, signal?: AbortSignal) =
     const response = await callGemini(model, prompt, {
       tools: [{ googleSearch: {} }],
       seed: 42,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       systemInstruction: `Вы эксперт-технолог по буровым растворам ГНБ. Ваша задача — подобрать аналоги бентонита.
       
       ${ANTI_HALLUCINATION_RULES}
@@ -486,6 +491,7 @@ export const getWaterTreatment = async (params: WaterParams, signal?: AbortSigna
   try {
     const response = await callGemini(model, prompt, {
       seed: 42,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       systemInstruction: "Вы ведущий инженер-технолог по буровым растворам ГНБ. Ваша цель — предоставить точные, практически применимые рецепты химической обработки воды. СТРОГО СОБЛЮДАЙТЕ ФОРМАТ: сначала блок РЕЦЕПТУРА, затем блок ОБОСНОВАНИЕ для каждого уровня. Категорически запрещено использовать LaTeX-символы. Ответ должен быть на русском языке, разбит на четкие смысловые блоки ДВОЙНЫМ переносом строки."
     }, signal);
 

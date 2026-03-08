@@ -79,22 +79,24 @@ export default function App() {
     try {
       const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
       
+      let lastUpdate = Date.now();
       const response = await analyzeBentoniteStream(
         brandName, 
         { ...crossingParams, soilType: finalSoilType },
         (chunk) => {
-          setResult(chunk);
+          const now = Date.now();
+          // Update UI at most every 100ms to prevent hanging during rapid streaming
+          if (now - lastUpdate > 100 || chunk.length < 100) {
+            setResult(chunk);
+            lastUpdate = now;
+          }
           if (loadingStep !== 'Формирование отчета...') setLoadingStep('Формирование отчета...');
         },
         abortControllerRef.current?.signal
       );
       
-      if (response.text.startsWith("Ошибка:")) {
-        setError(response.text);
-      } else {
-        setResult(response.text || "Информация не найдена.");
-        if (response.brand && response.brand !== brandName) setBrandName(response.brand);
-      }
+      // Final update to ensure we have the full text
+      setResult(response.text || "Информация не найдена.");
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       
@@ -308,22 +310,23 @@ export default function App() {
       setLoadingStep('Распознавание этикетки...');
       const finalSoilType = crossingParams.soilType === 'Свой тип...' ? customSoil : crossingParams.soilType;
       
+      let lastUpdate = Date.now();
       const response = await analyzeBentoniteStream(
         compressed, 
         { ...crossingParams, soilType: finalSoilType },
         (chunk) => {
-          setResult(chunk);
+          const now = Date.now();
+          if (now - lastUpdate > 100 || chunk.length < 100) {
+            setResult(chunk);
+            lastUpdate = now;
+          }
           if (loadingStep !== 'Анализ технических данных...') setLoadingStep('Анализ технических данных...');
         },
         abortControllerRef.current?.signal
       );
       
-      if (response.text.startsWith("Ошибка:")) {
-        setError(response.text);
-      } else {
-        setResult(response.text || "Не удалось проанализировать изображение.");
-        if (response.brand) setBrandName(response.brand);
-      }
+      setResult(response.text || "Не удалось проанализировать изображение.");
+      if (response.brand) setBrandName(response.brand);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       
