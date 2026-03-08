@@ -35,6 +35,21 @@ export interface CrossingParams {
   soilType: string;
 }
 
+const isQuotaError = (error: any): boolean => {
+  const errorMessage = error.message || "";
+  const errorStatus = error.status || "";
+  const errorDetails = JSON.stringify(error);
+  
+  return (
+    errorMessage.includes("429") || 
+    errorMessage.includes("RESOURCE_EXHAUSTED") ||
+    errorStatus === "RESOURCE_EXHAUSTED" ||
+    errorDetails.includes("429") ||
+    errorDetails.includes("RESOURCE_EXHAUSTED") ||
+    (error.response && error.response.status === 429)
+  );
+};
+
 const callGemini = async (model: string, contents: any, config: any, signal?: AbortSignal, retries = 2) => {
   const TIMEOUT = 45000; // 45 seconds timeout
   let retryCount = 0;
@@ -80,19 +95,8 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
         }
         throw new Error("Превышено время ожидания ответа (45 сек). Попробуйте еще раз.");
       }
-      const errorMessage = error.message || "";
-      const errorStatus = error.status || "";
-      const errorDetails = JSON.stringify(error);
-      
-      const isQuotaError = 
-        errorMessage.includes("429") || 
-        errorMessage.includes("RESOURCE_EXHAUSTED") ||
-        errorStatus === "RESOURCE_EXHAUSTED" ||
-        errorDetails.includes("429") ||
-        errorDetails.includes("RESOURCE_EXHAUSTED") ||
-        (error.response && error.response.status === 429);
-      
-      if (isQuotaError && retryCount < retries) {
+
+      if (isQuotaError(error) && retryCount < retries) {
         retryCount++;
         const delay = Math.pow(2, retryCount) * 1000;
         console.warn(`Quota exceeded (429). Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
@@ -100,11 +104,11 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
         continue;
       }
 
-      if (isQuotaError) {
-        throw new Error("Лимит запросов исчерпан. Пожалуйста, подождите 1-2 минуты.");
+      if (isQuotaError(error)) {
+        throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.");
       }
       
-      if (errorMessage.includes("API key not valid")) {
+      if (error.message?.includes("API key not valid")) {
         throw new Error("Неверный API ключ.");
       }
 
@@ -162,7 +166,8 @@ export const analyzeBentoniteStream = async (
   input: string | { data: string; mimeType: string },
   crossing: CrossingParams | undefined,
   onChunk: (chunk: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  retries = 2
 ) => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("API ключ не настроен.");
@@ -205,35 +210,59 @@ export const analyzeBentoniteStream = async (
         ]
       };
 
-  const responseStream = await ai.models.generateContentStream({
-    model,
-    contents,
-    config: {
-      temperature: 0,
-      seed: 42,
-      tools: [{ googleSearch: {} }],
-      systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS
+  let retryCount = 0;
+  while (retryCount <= retries) {
+    try {
+      const currentConfig = {
+        temperature: 0,
+        seed: 42,
+        tools: retryCount > 0 ? [] : [{ googleSearch: {} }],
+        systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS
+      };
+
+      const responseStream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: currentConfig
+      });
+
+      let fullText = "";
+      for await (const chunk of responseStream) {
+        if (signal?.aborted) throw new Error("Request aborted");
+        const text = chunk.text || "";
+        fullText += text;
+        onChunk(stripMetaText(fullText));
+      }
+
+      // Если в ответе содержится ошибка валидации, не пытаемся извлечь бренд
+      if (fullText.includes("Ошибка ввода данных")) {
+        return { text: fullText, brand: "" };
+      }
+
+      const brandMatch = fullText.match(/^##\s*(.*?)\n/) || fullText.match(/Бренд:\s*(.*?)\n/) || fullText.match(/Марка:\s*(.*?)\n/);
+      return { 
+        text: stripMetaText(fullText), 
+        brand: brandMatch ? brandMatch[1].trim() : (typeof input === 'string' ? input : "") 
+      };
+    } catch (error: any) {
+      if (signal?.aborted) throw error;
+      
+      if (isQuotaError(error) && retryCount < retries) {
+        retryCount++;
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.warn(`Quota exceeded in stream. Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      if (isQuotaError(error)) {
+        throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или перейдите на платный тариф в Google AI Studio.");
+      }
+
+      throw error;
     }
-  });
-
-  let fullText = "";
-  for await (const chunk of responseStream) {
-    if (signal?.aborted) throw new Error("Request aborted");
-    const text = chunk.text || "";
-    fullText += text;
-    onChunk(stripMetaText(fullText));
   }
-
-  // Если в ответе содержится ошибка валидации, не пытаемся извлечь бренд
-  if (fullText.includes("Ошибка ввода данных")) {
-    return { text: fullText, brand: "" };
-  }
-
-  const brandMatch = fullText.match(/^##\s*(.*?)\n/) || fullText.match(/Бренд:\s*(.*?)\n/) || fullText.match(/Марка:\s*(.*?)\n/);
-  return { 
-    text: stripMetaText(fullText), 
-    brand: brandMatch ? brandMatch[1].trim() : (typeof input === 'string' ? input : "") 
-  };
+  throw new Error("Не удалось получить ответ от нейросети.");
 };
 
 export const analyzeBentonite = async (

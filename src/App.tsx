@@ -97,7 +97,34 @@ export default function App() {
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message || "Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.");
+      
+      let friendlyError = err.message || "Не удалось получить информацию о бентоните. Пожалуйста, попробуйте снова.";
+      
+      // Try to parse JSON error from SDK
+      try {
+        if (friendlyError.includes('{')) {
+          const jsonStr = friendlyError.substring(friendlyError.indexOf('{'));
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.error?.message) {
+            // If the inner message is also JSON, parse it too
+            if (parsed.error.message.includes('{')) {
+              const innerJson = parsed.error.message.substring(parsed.error.message.indexOf('{'));
+              const innerParsed = JSON.parse(innerJson);
+              friendlyError = innerParsed.error?.message || parsed.error.message;
+            } else {
+              friendlyError = parsed.error.message;
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback to original message
+      }
+
+      if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
+        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+      }
+
+      setError(friendlyError);
       console.error(err);
     } finally {
       setLoading(false);
@@ -130,7 +157,29 @@ export default function App() {
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message || "Не удалось получить состав бентонита.");
+      
+      let friendlyError = err.message || "Не удалось получить состав бентонита.";
+      try {
+        if (friendlyError.includes('{')) {
+          const jsonStr = friendlyError.substring(friendlyError.indexOf('{'));
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.error?.message) {
+            if (parsed.error.message.includes('{')) {
+              const innerJson = parsed.error.message.substring(parsed.error.message.indexOf('{'));
+              const innerParsed = JSON.parse(innerJson);
+              friendlyError = innerParsed.error?.message || parsed.error.message;
+            } else {
+              friendlyError = parsed.error.message;
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
+        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+      }
+
+      setError(friendlyError);
       console.error(err);
     } finally {
       setLoading(false);
@@ -163,7 +212,29 @@ export default function App() {
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message || "Не удалось получить список аналогов.");
+      
+      let friendlyError = err.message || "Не удалось получить список аналогов.";
+      try {
+        if (friendlyError.includes('{')) {
+          const jsonStr = friendlyError.substring(friendlyError.indexOf('{'));
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.error?.message) {
+            if (parsed.error.message.includes('{')) {
+              const innerJson = parsed.error.message.substring(parsed.error.message.indexOf('{'));
+              const innerParsed = JSON.parse(innerJson);
+              friendlyError = innerParsed.error?.message || parsed.error.message;
+            } else {
+              friendlyError = parsed.error.message;
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
+        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+      }
+
+      setError(friendlyError);
       console.error(err);
     } finally {
       setLoading(false);
@@ -255,7 +326,29 @@ export default function App() {
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message || "Ошибка анализа изображения.");
+      
+      let friendlyError = err.message || "Ошибка анализа изображения.";
+      try {
+        if (friendlyError.includes('{')) {
+          const jsonStr = friendlyError.substring(friendlyError.indexOf('{'));
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.error?.message) {
+            if (parsed.error.message.includes('{')) {
+              const innerJson = parsed.error.message.substring(parsed.error.message.indexOf('{'));
+              const innerParsed = JSON.parse(innerJson);
+              friendlyError = innerParsed.error?.message || parsed.error.message;
+            } else {
+              friendlyError = parsed.error.message;
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
+        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+      }
+
+      setError(friendlyError);
       console.error(err);
     } finally {
       setLoading(false);
@@ -284,7 +377,29 @@ export default function App() {
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message || "Не удалось сформировать рецепты водоподготовки.");
+      
+      let friendlyError = err.message || "Не удалось сформировать рецепты водоподготовки.";
+      try {
+        if (friendlyError.includes('{')) {
+          const jsonStr = friendlyError.substring(friendlyError.indexOf('{'));
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.error?.message) {
+            if (parsed.error.message.includes('{')) {
+              const innerJson = parsed.error.message.substring(parsed.error.message.indexOf('{'));
+              const innerParsed = JSON.parse(innerJson);
+              friendlyError = innerParsed.error?.message || parsed.error.message;
+            } else {
+              friendlyError = parsed.error.message;
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (friendlyError.includes("quota") || friendlyError.includes("429") || friendlyError.includes("RESOURCE_EXHAUSTED")) {
+        friendlyError = "Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.";
+      }
+
+      setError(friendlyError);
       console.error(err);
     } finally {
       setLoading(false);
