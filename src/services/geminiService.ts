@@ -35,19 +35,29 @@ export interface CrossingParams {
   soilType: string;
 }
 
-const isQuotaError = (error: any): boolean => {
+const isRetryableError = (error: any): boolean => {
   const errorMessage = error.message || "";
   const errorStatus = error.status || "";
   const errorDetails = JSON.stringify(error);
   
-  return (
+  const isQuota = 
     errorMessage.includes("429") || 
     errorMessage.includes("RESOURCE_EXHAUSTED") ||
     errorStatus === "RESOURCE_EXHAUSTED" ||
     errorDetails.includes("429") ||
     errorDetails.includes("RESOURCE_EXHAUSTED") ||
-    (error.response && error.response.status === 429)
-  );
+    (error.response && error.response.status === 429);
+
+  const isHighDemand = 
+    errorMessage.includes("503") ||
+    errorMessage.includes("high demand") ||
+    errorMessage.includes("Service Unavailable") ||
+    errorStatus === "SERVICE_UNAVAILABLE" ||
+    errorDetails.includes("503") ||
+    errorDetails.includes("high demand") ||
+    (error.response && error.response.status === 503);
+
+  return isQuota || isHighDemand;
 };
 
 const callGemini = async (model: string, contents: any, config: any, signal?: AbortSignal, retries = 2) => {
@@ -97,15 +107,18 @@ const callGemini = async (model: string, contents: any, config: any, signal?: Ab
         throw new Error("Превышено время ожидания ответа (45 сек). Попробуйте еще раз.");
       }
 
-      if (isQuotaError(error) && retryCount < retries) {
+      if (isRetryableError(error) && retryCount < retries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.warn(`Quota exceeded (429). Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
+        const delay = Math.pow(2, retryCount) * 1500; // Slightly longer delay for high demand
+        console.warn(`Transient error or Quota exceeded. Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
-      if (isQuotaError(error)) {
+      if (isRetryableError(error)) {
+        if (error.message?.includes("high demand") || error.message?.includes("503")) {
+          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.");
+        }
         throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или проверьте настройки биллинга в Google AI Studio.");
       }
       
@@ -249,15 +262,18 @@ export const analyzeBentoniteStream = async (
     } catch (error: any) {
       if (signal?.aborted) throw error;
       
-      if (isQuotaError(error) && retryCount < retries) {
+      if (isRetryableError(error) && retryCount < retries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.warn(`Quota exceeded in stream. Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
+        const delay = Math.pow(2, retryCount) * 1500;
+        console.warn(`Transient error in stream. Retrying in ${delay}ms... (Attempt ${retryCount}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
-      if (isQuotaError(error)) {
+      if (isRetryableError(error)) {
+        if (error.message?.includes("high demand") || error.message?.includes("503")) {
+          throw new Error("Сервер Gemini перегружен (High Demand). Пожалуйста, подождите 10-20 секунд и попробуйте снова.");
+        }
         throw new Error("Лимит запросов Gemini API исчерпан. Пожалуйста, подождите 1-2 минуты или перейдите на платный тариф в Google AI Studio.");
       }
 
